@@ -17,11 +17,11 @@ public class ShocksOff {
 
     MiscFunctions miscFunctions = new MiscFunctions();
 
-    int J = 50;                      // lifespan in years
+    int J = 60;                      // lifespan in years
 
     // preferences
-    double gamma = 2;          // CRRA utility term
-    double psi = 5;            // bequest utility term
+    double gamma = 3;          // CRRA utility term
+    double psi = 250;            // bequest utility term
     double xi = 0.57;          // bequest utility term
     double alpha_non_sfha;     // homeownership utility in non-SFHA
     double alpha_sfha;         // homeownership utility in SFHA; alpha_sfha > alpha_non_sfha
@@ -29,7 +29,7 @@ public class ShocksOff {
     double beta = 0.97;        // discount factor
 
     // subsidy/transfer due to disaster shock
-    double tau = 0;
+    double tau;
 
     // wages and interest rate (risk less)
     double g = 0.02;           // growth rate for wages (annual)
@@ -294,6 +294,11 @@ public class ShocksOff {
         double y = wage(age);
         double a = a_grid[ia];
 
+        // housing related costs
+        double maintenance = maintenance_factor * p_sfha;
+        double closing_cost = closing_factor * p_sfha;
+        double moving_cost = moving_factor * y;
+
         double VV_R = -1e5; double VV_RR = -1e5; double VV_RMS = -1e5;
         double CC_R = 0; double CC_RR = 0; double CC_RMS = 0;
         double AA_R = 0; double AA_RR = 0; double AA_RMS = 0;
@@ -324,7 +329,7 @@ public class ShocksOff {
                 double oltv = oltv_grid[ioltv];
                 double new_x = mortgage_payment(ioltv, ifico, p_sfha);
                 double expected_sfha = E_sfha[age + 1][iap][ioltv][ifico][1][0];
-                double c_sfha = (1 + r) * a + y - a_prime - new_x - (1 - oltv) * p_sfha;
+                double c_sfha = (1 + r) * a + y - a_prime - new_x - (1 - oltv) * p_sfha - maintenance - closing_cost - moving_cost;
                 double util_sfha = utility_sfha(c_sfha, 1, 0) + beta * expected_sfha;
 
                 if (c_sfha <= 0){util_sfha = -1e5;}
@@ -1492,18 +1497,20 @@ public class ShocksOff {
     double[] calibration(double price_sfha, double[] empirical_moments, String verbose){
 
         double[] price_ratio_grid = {0.8}; //0.80
-        double[] alpha_sfha_grid = {0.32};  //2.2
-        double[] alpha_non_sfha_grid = {0.2}; //1.9
-        double[] default_penalty = {0.0707}; //0.9, 0.05
+        double[] alpha_sfha_grid = {0.52};  //2.2, 1, 0.50
+        double[] alpha_non_sfha_grid = {0.2}; //1.9, 0.9
+        double[] default_penalty_grid = {0}; //0.9, 0.05, 0.0707
+        double[] transfer_grid = {0};
 
         double SS = 1e5; double AAS = 0; double AANS = 0; double PR = 0; double DD = 0;
 
         // Building the state space for calibration (dim: 4)
-        Integer[][] matrix_calibration = new Integer[4][];
+        Integer[][] matrix_calibration = new Integer[5][];
         matrix_calibration[0] = ArrayUtils.toObject(IntStream.range(0, price_ratio_grid.length).toArray());
         matrix_calibration[1] = ArrayUtils.toObject(IntStream.range(0, alpha_sfha_grid.length).toArray());
         matrix_calibration[2] = ArrayUtils.toObject(IntStream.range(0, alpha_non_sfha_grid.length).toArray());
-        matrix_calibration[3] = ArrayUtils.toObject(IntStream.range(0, default_penalty.length).toArray());
+        matrix_calibration[3] = ArrayUtils.toObject(IntStream.range(0, default_penalty_grid.length).toArray());
+        matrix_calibration[4] = ArrayUtils.toObject(IntStream.range(0, transfer_grid.length).toArray());
         CartesianSet<Integer> state_space_calibration = new CartesianSet<>(matrix_calibration);
         int Z_calibration = (int) state_space_calibration.getCount();
         System.out.println("number of simulations: " + Z_calibration);
@@ -1515,7 +1522,8 @@ public class ShocksOff {
             price_non_sfha = price_ratio_grid[node.get(0)] * price_sfha;
             alpha_sfha = alpha_sfha_grid[node.get(1)];
             alpha_non_sfha = alpha_non_sfha_grid[node.get(2)];
-            d = default_penalty[node.get(3)];
+            d = default_penalty_grid[node.get(3)];
+            tau = transfer_grid[node.get(4)];
             Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = solve_household_problems(price_sfha, price_non_sfha, verbose);
             Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions = compute_distributions(household_policy_functions, verbose);
             model_moments = compute_market_clearing_and_moments(household_policy_functions, distributions, price_sfha,"yes", verbose);

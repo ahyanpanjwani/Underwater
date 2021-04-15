@@ -114,6 +114,75 @@ public class MiscFunctions {
         return Expected_sfha;
     }
 
+    double[][][][][][][] Expected_risky_income_risk(int J, int na, int noltv, int nfico, int N, int ntheta, int ne,
+                                     double[][][][][][][] V_risky, double[][] transition_matrix_disaster_risk,
+                                     double[][] transition_matrix_income_risk, int age){
+        double[][][][][][][] Expected_risky = new double[J][na][noltv][nfico][N][ntheta][ne];
+        double expected = 0d;
+        for (int ia = 0; ia < na; ia++){
+            for (int ioltv = 0; ioltv < noltv; ioltv++){
+                for (int ifico = 0; ifico < nfico; ifico++){
+                    for (int n = 0; n < N; n++){
+                        for (int itheta = 0; itheta < ntheta; itheta++){
+                            for (int ie = 0; ie < ne; ie++){
+                                for (int ithetap = 0; ithetap < ntheta; ithetap++){
+                                    for (int iep = 0; iep < ne; iep++){
+                                        expected = expected + transition_matrix_disaster_risk[itheta][ithetap] * transition_matrix_income_risk[ie][iep] * V_risky[age][ia][ioltv][ifico][n][ithetap][iep];
+                                    }
+                                }
+                                Expected_risky[age][ia][ioltv][ifico][n][itheta][ie] = expected;
+                            }
+                            expected = 0;
+                        }
+                    }
+                }
+            }
+        }
+        return Expected_risky;
+    }
+
+    double[][][][][][] Expected_safe_income_risk(int J, int na, int noltv, int nfico, int N, int ne,
+                                                   double[][][][][][] V_safe,
+                                                   double[][] transition_matrix_income_risk, int age){
+        double[][][][][][] Expected_safe = new double[J][na][noltv][nfico][N][ne];
+        double expected = 0d;
+        for (int ia = 0; ia < na; ia++){
+            for (int ioltv = 0; ioltv < noltv; ioltv++){
+                for (int ifico = 0; ifico < nfico; ifico++){
+                    for (int n = 0; n < N; n++){
+                        for (int ie = 0; ie < ne; ie++){
+                            for (int iep = 0; iep < ne; iep++){
+                                expected = expected + transition_matrix_income_risk[ie][iep] * V_safe[age][ia][ioltv][ifico][n][iep];
+                            }
+                            Expected_safe[age][ia][ioltv][ifico][n][ie] = expected;
+                        }
+                        expected = 0;
+                    }
+                }
+            }
+        }
+        return Expected_safe;
+    }
+
+    double[][][][] Expected_rental_income_risk(int J, int na, int nfico, int ne,
+                                                     double[][][][] V_rental,
+                                                     double[][] transition_matrix_income_risk, int age){
+        double[][][][] Expected_rental = new double[J][na][nfico][ne];
+        double expected = 0d;
+        for (int ia = 0; ia < na; ia++){
+            for (int ifico = 0; ifico < nfico; ifico++){
+                for (int ie = 0; ie < ne; ie++){
+                    for (int iep = 0; iep < ne; iep++){
+                        expected = expected + transition_matrix_income_risk[ie][iep] * V_rental[age][ia][ifico][iep];
+                    }
+                    Expected_rental[age][ia][ifico][ie] = expected;
+                }
+                expected = 0;
+            }
+        }
+        return Expected_rental;
+    }
+
     double[] read_vector(String file_path, int number_of_grid_points){
         double[] x_grid = new double[number_of_grid_points];
         try {
@@ -127,5 +196,12 @@ public class MiscFunctions {
             }
         }catch (IOException e){e.printStackTrace();}
         return x_grid;
+    }
+
+    void pause(double seconds)
+    {
+        try {
+            Thread.sleep((long) (seconds * 1000));
+        } catch (InterruptedException e) {}
     }
 }
