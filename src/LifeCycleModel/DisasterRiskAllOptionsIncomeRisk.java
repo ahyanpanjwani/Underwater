@@ -5,15 +5,14 @@ import org.apache.commons.math3.analysis.interpolation.LinearInterpolator;
 import org.apache.commons.math3.analysis.polynomials.PolynomialSplineFunction;
 import org.javatuples.Quartet;
 
+import java.lang.reflect.Array;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.List;
 import java.util.stream.IntStream;
 
 import static java.lang.Math.*;
-import static java.lang.Math.max;
 
-public class ShocksOff {
+public class DisasterRiskAllOptionsIncomeRisk {
 
     MiscFunctions miscFunctions = new MiscFunctions();
 
@@ -23,8 +22,8 @@ public class ShocksOff {
     double gamma = 3;          // CRRA utility term
     double psi = 250;            // bequest utility term
     double xi = 0.57;          // bequest utility term
-    double alpha_non_sfha;     // homeownership utility in non-SFHA
-    double alpha_sfha;         // homeownership utility in SFHA; alpha_sfha > alpha_non_sfha
+    double alpha_non_sfha = 0.2;     // homeownership utility in non-SFHA
+    double alpha_sfha = 0.42;         // homeownership utility in SFHA; alpha_sfha > alpha_non_sfha
     double d;                  // default penalty (in utile)
     double beta = 0.97;        // discount factor
 
@@ -87,7 +86,7 @@ public class ShocksOff {
     }
 
     // calculate the cohort-wide wage (a function of age only)
-    double wage(int age){
+    double wage(int age, int ie){
         // these figures come from the BLS
         // median weekly wages by age group: https://www.bls.gov/news.release/archives/wkyeng_10182012.htm
         // median weekly wage across the population: https://www.bls.gov/opub/ted/2012/ted_20121019.htm
@@ -95,6 +94,9 @@ public class ShocksOff {
         // I divide each groups median wage by the population median to normalize and then scale to annual
 
         double y = 0;
+        double y_employed = 0;
+        double y_unemployed = 0;
+
         /*
         age = age + 20;
         if (age >= 20 & age < 25){y = (461d / 758);}
@@ -111,9 +113,15 @@ public class ShocksOff {
         PolynomialSplineFunction function = linearInterpolator.interpolate(age_grid, wage_grid);
 
         if (age <= 45){
-            y = function.value(age);
+            y_employed = function.value(age);
         }else if (age > 45){
-            y = wage_grid[5];
+            y_employed = wage_grid[5];
+        }
+
+        if (ie == 0){
+            y = y_employed;
+        }else if (ie == 1){
+            y = 0.99 * y_employed;
         }
 
         return y;
@@ -142,9 +150,9 @@ public class ShocksOff {
 
     // Non-SFHA Homeowner
     // Terminal Non-SFHA Homeowner (3.5)
-    double[] terminal_non_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, double p_non_sfha){
+    double[] terminal_non_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int ie, double p_non_sfha){
 
-        double y = wage(age);
+        double y = wage(age, ie);
         double ltv = current_ltv(ioltv, ifico, n, p_non_sfha);
         double a = a_grid[ia];
 
@@ -175,11 +183,11 @@ public class ShocksOff {
     }
 
     // Interim Non-SFHA Homeowner (3.1)
-    double[] interim_non_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n,
+    double[] interim_non_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int ie,
                                         double[][][][][] V_non_sfha, double[][][][][][] E_sfha, double[][][] V_rental,
                                         double p_non_sfha, double p_sfha, double q){
 
-        double y = wage(age);
+        double y = wage(age, ie);
         double current_x = mortgage_payment(ioltv, ifico, p_non_sfha);
         double current_ltv = current_ltv(ioltv, ifico, n, p_non_sfha);
         double a = a_grid[ia];
@@ -337,8 +345,8 @@ public class ShocksOff {
 
     // Rental Market
     // Terminal Renter (2.5)
-    double[] terminal_renter(int age, int ia, int ifico){
-        double y = wage(age);
+    double[] terminal_renter(int age, int ia, int ifico, int ie){
+        double y = wage(age, ie);
         double a = a_grid[ia];
 
         double VV = -1e5;
@@ -368,11 +376,11 @@ public class ShocksOff {
     }
 
     // Interim Renter (2.1, 2.3)
-    double[] interim_renter(int age, int ia, int ifico,
+    double[] interim_renter(int age, int ia, int ifico, int ie,
                             double[][][] V_rental, double[][][][][][] E_sfha, double[][][][][] V_non_sfha,
                             double q, double p_non_sfha, double p_sfha){
 
-        double y = wage(age);
+        double y = wage(age, ie);
         double a = a_grid[ia];
 
         // housing related costs
@@ -471,9 +479,9 @@ public class ShocksOff {
 
     // SFHA Homeowner
     // Terminal SFHA Homeowner (1.5)
-    double[] terminal_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int itheta, double p_sfha){
+    double[] terminal_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int itheta, int ie, double p_sfha){
 
-        double y = wage(age);
+        double y = wage(age, ie);
         double a = a_grid[ia];
         double ltv = current_ltv(ioltv, ifico, n, p_sfha);
         double theta = theta_grid[itheta];
@@ -504,10 +512,10 @@ public class ShocksOff {
     }
 
     // Interim SFHA Homeowner (1.1, 1.2, 1.31, 1.32, 1.4)
-    double[] interim_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int itheta,
+    double[] interim_sfha_homeowner(int age, int ia, int ioltv, int ifico, int n, int itheta, int ie,
                                     double[][][][][][] E_sfha, double[][][] V_rental, double[][][][][] V_non_sfha,
                                     double q, double p_sfha, double p_non_sfha){
-        double y = wage(age);
+        double y = wage(age, ie);
         double a = a_grid[ia];
         double theta = theta_grid[itheta];
         double oltv = oltv_grid[ioltv];
@@ -680,9 +688,10 @@ public class ShocksOff {
     }
 
     // Newborn (1.0, 2.0, 3.0)
-    double[] newborn(int age, int ia, int ifico, double[][][][][][] E_sfha, double[][][] V_rental, double[][][][][] V_non_sfha,
+    double[] newborn(int age, int ia, int ifico, int ie,
+                     double[][][][][][] E_sfha, double[][][] V_rental, double[][][][][] V_non_sfha,
                      double q, double p_sfha, double p_non_sfha){
-        double y = wage(age);
+        double y = wage(age, ie);
         double a = a_grid[ia];
         double fico = fico_grid[ifico];
         double moving_cost = moving_factor * y;
@@ -794,37 +803,42 @@ public class ShocksOff {
         int noltv = oltv_grid.length;    // number of oltv points
         int nfico = fico_grid.length;    // number of fico points
         int ntheta = theta_grid.length;  // number of disaster risk points
+        int ne = 2;
 
-        // Building the state space for non-SFHA (dim: 4)
-        Integer[][] matrix_non_sfha = new Integer[4][];
+        // Building the state space for non-SFHA (dim: 5)
+        Integer[][] matrix_non_sfha = new Integer[5][];
         matrix_non_sfha[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
         matrix_non_sfha[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
         matrix_non_sfha[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
         matrix_non_sfha[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
+        matrix_non_sfha[4] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
         CartesianSet<Integer> state_space_non_sfha = new CartesianSet<>(matrix_non_sfha);
         int Z_non_sfha= (int) state_space_non_sfha.getCount();
 
-        // Building the state space for rental (dim: 2)
-        Integer[][] matrix_rental = new Integer[2][];
+        // Building the state space for rental (dim: 3)
+        Integer[][] matrix_rental = new Integer[3][];
         matrix_rental[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
         matrix_rental[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_rental[2] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
         CartesianSet<Integer> state_space_rental = new CartesianSet<>(matrix_rental);
         int Z_rental = (int) state_space_rental.getCount();
 
-        // Building the state space for SFHA (dim: 5)
-        Integer[][] matrix_sfha = new Integer[5][];
+        // Building the state space for SFHA (dim: 6)
+        Integer[][] matrix_sfha = new Integer[6][];
         matrix_sfha[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
         matrix_sfha[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
         matrix_sfha[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
         matrix_sfha[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
         matrix_sfha[4] = ArrayUtils.toObject(IntStream.range(0, ntheta).toArray());
+        matrix_sfha[5] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
         CartesianSet<Integer> state_space_sfha = new CartesianSet<>(matrix_sfha);
         int Z_sfha= (int) state_space_sfha.getCount();
 
-        // Building the state space for newborns (dim: 2)
-        Integer[][] matrix_newborn = new Integer[2][];
+        // Building the state space for newborns (dim: 3)
+        Integer[][] matrix_newborn = new Integer[3][];
         matrix_newborn[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
         matrix_newborn[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_newborn[2] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
         CartesianSet<Integer> state_space_newborn = new CartesianSet<>(matrix_newborn);
         int Z_newborn = (int) state_space_newborn.getCount();
 
@@ -876,7 +890,8 @@ public class ShocksOff {
             int ioltv = node.get(1);
             int ifico = node.get(2);
             int n = node.get(3);
-            double[] terminal_non_sfha_homeowner_output = terminal_non_sfha_homeowner(J - 1, ia, ioltv, ifico, n, p_non_sfha);
+            int ie = node.get(4);
+            double[] terminal_non_sfha_homeowner_output = terminal_non_sfha_homeowner(J - 1, ia, ioltv, ifico, n, ie, p_non_sfha);
             V_non_sfha[J - 1][ia][ioltv][ifico][n] = terminal_non_sfha_homeowner_output[1];
             c_non_sfha[J - 1][ia][ioltv][ifico][n] = terminal_non_sfha_homeowner_output[2];
             a_non_sfha[J - 1][ia][ioltv][ifico][n] = terminal_non_sfha_homeowner_output[3];
@@ -891,7 +906,8 @@ public class ShocksOff {
             List<Integer> node = state_space_rental.get(z);
             int ia = node.get(0);
             int ifico = node.get(1);
-            double[] terminal_renter_output = terminal_renter(J - 1, ia, ifico);
+            int ie = node.get(2);
+            double[] terminal_renter_output = terminal_renter(J - 1, ia, ifico, ie);
             V_renter[J - 1][ia][ifico] = terminal_renter_output[1];
             c_renter[J - 1][ia][ifico] = terminal_renter_output[2];
             a_renter[J - 1][ia][ifico] = terminal_renter_output[3];
@@ -908,7 +924,8 @@ public class ShocksOff {
             int ifico = node.get(2);
             int n = node.get(3);
             int itheta = node.get(4);
-            double[] terminal_sfha_homeowner_output = terminal_sfha_homeowner(J - 1, ia, ioltv, ifico, n, itheta, p_sfha);
+            int ie = node.get(5);
+            double[] terminal_sfha_homeowner_output = terminal_sfha_homeowner(J - 1, ia, ioltv, ifico, n, itheta, ie, p_sfha);
             V_sfha[J - 1][ia][ioltv][ifico][n][itheta] = terminal_sfha_homeowner_output[1];
             c_sfha[J - 1][ia][ioltv][ifico][n][itheta] = terminal_sfha_homeowner_output[2];
             a_sfha[J - 1][ia][ioltv][ifico][n][itheta] = terminal_sfha_homeowner_output[3];
@@ -936,7 +953,8 @@ public class ShocksOff {
                 int ioltv = node.get(1);
                 int ifico = node.get(2);
                 int n = node.get(3);
-                double[] interim_non_sfha_homeowner = interim_non_sfha_homeowner(J - final_j, ia, ioltv, ifico, n, V_non_sfha, finalExpected_sfha, V_renter, p_non_sfha, p_sfha, q);
+                int ie = node.get(4);
+                double[] interim_non_sfha_homeowner = interim_non_sfha_homeowner(J - final_j, ia, ioltv, ifico, n, ie, V_non_sfha, finalExpected_sfha, V_renter, p_non_sfha, p_sfha, q);
                 V_non_sfha[J - final_j][ia][ioltv][ifico][n] = interim_non_sfha_homeowner[1];
                 c_non_sfha[J - final_j][ia][ioltv][ifico][n] = interim_non_sfha_homeowner[2];
                 a_non_sfha[J - final_j][ia][ioltv][ifico][n] = interim_non_sfha_homeowner[3];
@@ -950,7 +968,8 @@ public class ShocksOff {
                 List<Integer> node = state_space_rental.get(z);
                 int ia = node.get(0);
                 int ifico = node.get(1);
-                double[] interim_renter = interim_renter(J - final_j, ia, ifico, V_renter, finalExpected_sfha, V_non_sfha, q, p_non_sfha, p_sfha);
+                int ie = node.get(2);
+                double[] interim_renter = interim_renter(J - final_j, ia, ifico, ie, V_renter, finalExpected_sfha, V_non_sfha, q, p_non_sfha, p_sfha);
                 V_renter[J - final_j][ia][ifico] = interim_renter[1];
                 c_renter[J - final_j][ia][ifico] = interim_renter[2];
                 a_renter[J - final_j][ia][ifico] = interim_renter[3];
@@ -968,7 +987,8 @@ public class ShocksOff {
                 int ifico = node.get(2);
                 int n = node.get(3);
                 int itheta = node.get(4);
-                double[] interim_sfha_homeowner_output = interim_sfha_homeowner(J - final_j, ia, ioltv, ifico, n, itheta, finalExpected_sfha, V_renter, V_non_sfha, q, p_sfha, p_non_sfha);
+                int ie = node.get(5);
+                double[] interim_sfha_homeowner_output = interim_sfha_homeowner(J - final_j, ia, ioltv, ifico, n, itheta, ie, finalExpected_sfha, V_renter, V_non_sfha, q, p_sfha, p_non_sfha);
                 V_sfha[J - final_j][ia][ioltv][ifico][n][itheta] = interim_sfha_homeowner_output[1];
                 c_sfha[J - final_j][ia][ioltv][ifico][n][itheta] = interim_sfha_homeowner_output[2];
                 a_sfha[J - final_j][ia][ioltv][ifico][n][itheta] = interim_sfha_homeowner_output[3];
@@ -990,7 +1010,8 @@ public class ShocksOff {
             List<Integer> node = state_space_newborn.get(z);
             int ia = node.get(0);
             int ifico = node.get(1);
-            double[] newborn_output = newborn(0, ia, ifico, Expected_sfha, V_renter, V_non_sfha, q, p_sfha, p_non_sfha);
+            int ie = node.get(2);
+            double[] newborn_output = newborn(0, ia, ifico, ie, Expected_sfha, V_renter, V_non_sfha, q, p_sfha, p_non_sfha);
             V_newborn[0][ia][ifico] = newborn_output[1];
             c_newborn[0][ia][ifico] = newborn_output[2];
             a_newborn[0][ia][ifico] = newborn_output[3];
@@ -1230,6 +1251,7 @@ public class ShocksOff {
 
             // loop for homeowners wanting to remain in sfha (by staying current(1.1) or refinance(1.2))
             // this loop is nested within the theta loop to allow for disaster shock (you only face disaster shock in the future if you remain in sfha)
+            /*
             for (int z = 0; z < Z_sfha; z++){
                 List<Integer> node = state_space_sfha.get(z);
                 int ia = node.get(0);
@@ -1249,6 +1271,8 @@ public class ShocksOff {
                             (1 * f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
                 }
             }
+
+             */
 
             for (int z = 0; z < Z_sfha; z++){
                 List<Integer> node = state_space_sfha.get(z);
@@ -1368,334 +1392,11 @@ public class ShocksOff {
         return output;
     }
 
-    // compute excess demand for housing in SFHA and moments of interest
-    // method returns the three moments of interest (homeownership rate, homeownership ratio, and default rate)
-    double[] compute_market_clearing_and_moments(
-            Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions,
-            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions, double price_sfha,
-            String compute_moments, String verbose){
+    public static void main(String[] args){
 
-        // cohort weight
-        double mu_j = 1d / J;
+        DisasterRiskAllOptionsIncomeRisk model = new DisasterRiskAllOptionsIncomeRisk();
 
-        // re-create state spaces for sfha, non-sfha, renters, and newborns (this helps write cleaner for loops)
-        int na = a_grid.length;          // number of asset points
-        int noltv = oltv_grid.length;    // number of oltv points
-        int nfico = fico_grid.length;    // number of fico points
-        int ntheta = theta_grid.length;  // number of disaster risk points
-
-        // Building the state space for SFHA (dim: 5)
-        Integer[][] matrix_sfha = new Integer[5][];
-        matrix_sfha[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
-        matrix_sfha[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
-        matrix_sfha[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
-        matrix_sfha[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
-        matrix_sfha[4] = ArrayUtils.toObject(IntStream.range(0, ntheta).toArray());
-        CartesianSet<Integer> state_space_sfha = new CartesianSet<>(matrix_sfha);
-        int Z_sfha= (int) state_space_sfha.getCount();
-
-        // Building the state space for non-SFHA (dim: 4)
-        Integer[][] matrix_non_sfha = new Integer[4][];
-        matrix_non_sfha[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
-        matrix_non_sfha[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
-        matrix_non_sfha[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
-        matrix_non_sfha[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
-        CartesianSet<Integer> state_space_non_sfha = new CartesianSet<>(matrix_non_sfha);
-        int Z_non_sfha= (int) state_space_non_sfha.getCount();
-
-        // Building the state space for rental (dim: 2)
-        Integer[][] matrix_rental = new Integer[2][];
-        matrix_rental[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
-        matrix_rental[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
-        CartesianSet<Integer> state_space_rental = new CartesianSet<>(matrix_rental);
-        int Z_rental = (int) state_space_rental.getCount();
-
-        // Building the state space for newborns (dim: 2)
-        Integer[][] matrix_newborn = new Integer[2][];
-        matrix_newborn[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
-        matrix_newborn[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
-        CartesianSet<Integer> state_space_newborn = new CartesianSet<>(matrix_newborn);
-        int Z_newborn = (int) state_space_newborn.getCount();
-
-        // unpacking the quartet containing all the policy functions
-        List<double[][][][][][]> sfha_homeowner_policy_functions = household_policy_functions.getValue0();
-        List<double[][][][][]> non_sfha_homeowner_policy_functions = household_policy_functions.getValue1();
-        List<double[][][]> renter_policy_functions = household_policy_functions.getValue2();
-        List<double[][][]> newborn_policy_functions = household_policy_functions.getValue3();
-
-        // unpacking each list to get policy functions for each state variable
-        double[][][][][][] c_sfha = sfha_homeowner_policy_functions.get(0);
-        double[][][][][][] a_sfha = sfha_homeowner_policy_functions.get(1);
-        double[][][][][][] oltv_sfha = sfha_homeowner_policy_functions.get(2);
-        double[][][][][][] fico_sfha = sfha_homeowner_policy_functions.get(3);
-        double[][][][][][] n_sfha = sfha_homeowner_policy_functions.get(4);
-        double[][][][][][] action_sfha = sfha_homeowner_policy_functions.get(5);
-
-        double[][][][][] c_non_sfha = non_sfha_homeowner_policy_functions.get(0);
-        double[][][][][] a_non_sfha = non_sfha_homeowner_policy_functions.get(1);
-        double[][][][][] oltv_non_sfha = non_sfha_homeowner_policy_functions.get(2);
-        double[][][][][] fico_non_sfha = non_sfha_homeowner_policy_functions.get(3);
-        double[][][][][] n_non_sfha = non_sfha_homeowner_policy_functions.get(4);
-        double[][][][][] action_non_sfha = non_sfha_homeowner_policy_functions.get(5);
-
-        double[][][] c_renter = renter_policy_functions.get(0);
-        double[][][] a_renter = renter_policy_functions.get(1);
-        double[][][] oltv_renter = renter_policy_functions.get(2);
-        double[][][] fico_renter = renter_policy_functions.get(3);
-        double[][][] n_renter = renter_policy_functions.get(4);
-        double[][][] action_renter = renter_policy_functions.get(5);
-
-        double[][][] c_newborn = newborn_policy_functions.get(0);
-        double[][][] a_newborn = newborn_policy_functions.get(1);
-        double[][][] oltv_newborn = newborn_policy_functions.get(2);
-        double[][][] fico_newborn = newborn_policy_functions.get(3);
-        double[][][] n_newborn = newborn_policy_functions.get(4);
-        double[][][] action_newborn = newborn_policy_functions.get(5);
-
-        // unpacking the quartet to get the distros
-        double[][][][][][] f_interim_sfha_homeowner = distributions.getValue0();
-        double[][][][][] f_interim_non_sfha_homeowner = distributions.getValue1();
-        double[][][] f_interim_renter = distributions.getValue2();
-        double[][][] f_newborn = distributions.getValue3();
-
-        // calculate the aggregate housing demand
-        double aggregate_housing_demand_newborns = 0;
-        double aggregate_housing_demand_renters = 0;
-        double aggregate_housing_supply = 0;
-        double aggregate_housing_excess_demand = 0;
-
-        int j = 0;
-        for (int z = 0; z < Z_newborn; z++){
-            List<Integer> node = state_space_newborn.get(z);
-            int ia = node.get(0);
-            int ifico = node.get(1);
-            // integrate to find the housing demand from newborns
-            if (action_newborn[j][ia][ifico] == 1.0){
-                aggregate_housing_demand_newborns = aggregate_housing_demand_newborns + (1 * f_newborn[j][ia][ifico]);
-            }
-        }
-
-
-        if (verbose.equals("yes")){
-            System.out.println("age , renter , homeowner");
-        }
-
-        for (j = 1; j < J; j++){
-
-            for (int z = 0; z < Z_rental; z++){
-                List<Integer> node = state_space_rental.get(z);
-                int ia = node.get(0);
-                int ifico = node.get(1);
-                if (action_renter[j][ia][ifico] == 2.3){
-                    aggregate_housing_demand_renters = aggregate_housing_demand_renters + (1 * f_interim_renter[j][ia][ifico]);
-                    if (f_interim_renter[j][ia][ifico] >= 1){
-                        System.out.println("Alert: pdf > 1 (homeonwer/supply)");
-                    }
-                }
-            }
-
-            for (int z = 0; z < Z_sfha; z++){
-                List<Integer> node = state_space_sfha.get(z);
-                int ia = node.get(0);
-                int ioltv = node.get(1);
-                int ifico = node.get(2);
-                int n = node.get(3);
-                int itheta = node.get(4);
-                if (action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.31 |
-                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.32 |
-                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.4  |
-                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.5){
-                    aggregate_housing_supply = aggregate_housing_supply + (1 * f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
-                    if (f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta] >= 1){
-                        System.out.println("Alert: pdf > 1 (homeonwer/supply)");
-                    }
-                }
-            }
-            if (verbose.equals("yes")){
-                System.out.println(j + " , " + aggregate_housing_demand_renters + " , " + aggregate_housing_supply);
-            }
-
-        }
-
-        aggregate_housing_excess_demand = (aggregate_housing_demand_newborns + aggregate_housing_demand_renters - aggregate_housing_supply);
-
-        if (verbose.equals("yes")){
-            System.out.println("==================================");
-            System.out.println("housing demand (newborns): " + (aggregate_housing_demand_newborns));
-            System.out.println("housing demand (renters): " + (aggregate_housing_demand_renters));
-            System.out.println("housing supply (sfha homeowners): " + (aggregate_housing_supply));
-            System.out.println("aggregate housing excess demand: " + aggregate_housing_excess_demand);
-            System.out.println("==================================");
-        }
-
-        if (aggregate_housing_excess_demand > 1e-5){
-            System.out.println("Housing market not cleared. Excess demand: " + aggregate_housing_excess_demand);
-        }
-
-        double[] output = new double[4];
-        if (compute_moments.equals("yes")){
-
-            // CALCULATE MOMENTS OF INTEREST IF INSTRUCTED BY USER
-            double defaulters = 0;
-            double sfha_homeowners = 0;
-            double non_sfha_homeowners = 0;
-            double[] consumption_by_age_sfha = new double[J];
-            double[] consumption_by_age_non_sfha = new double[J];
-            double[] consumption_by_age_rental = new double[J];
-            double[] consumption_by_age = new double[J];
-
-            for (j = 0; j < J; j++){
-
-                for (int z = 0; z < Z_sfha; z++){
-                    List<Integer> node = state_space_sfha.get(z);
-                    int ia = node.get(0);
-                    int ioltv = node.get(1);
-                    int ifico = node.get(2);
-                    int n = node.get(3);
-                    int itheta = node.get(4);
-                    if (action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.4){
-                        defaulters = defaulters + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta];
-                    }
-                    if (action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.0 | action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.1 |
-                            action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.2 | action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.31 |
-                            action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.32 | action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.4){
-                        sfha_homeowners = sfha_homeowners + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta];
-                    }
-                    consumption_by_age_sfha[j] = consumption_by_age_sfha[j] + (c_sfha[j][ia][ioltv][ifico][n][itheta] * f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
-                    if (j == 1 & f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta] > 0){
-                        System.out.println(action_sfha[j][ia][ioltv][ifico][n][itheta] + " , " + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
-                    }
-                }
-
-                for (int z = 0; z < Z_non_sfha; z++){
-                    List<Integer> node = state_space_non_sfha.get(z);
-                    int ia = node.get(0);
-                    int ioltv = node.get(1);
-                    int ifico = node.get(2);
-                    int n = node.get(3);
-                    if (action_non_sfha[j][ia][ioltv][ifico][n] == 3.0 | action_non_sfha[j][ia][ioltv][ifico][n] == 3.1 |
-                            action_non_sfha[j][ia][ioltv][ifico][n] == 3.2){
-                        non_sfha_homeowners = non_sfha_homeowners + f_interim_non_sfha_homeowner[j][ia][ioltv][ifico][n];
-                    }
-                    consumption_by_age_non_sfha[j] = consumption_by_age_non_sfha[j] + (c_non_sfha[j][ia][ioltv][ifico][n] * f_interim_non_sfha_homeowner[j][ia][ioltv][ifico][n]);
-                }
-
-                for (int z = 0; z < Z_rental; z++){
-                    List<Integer> node = state_space_rental.get(z);
-                    int ia = node.get(0);
-                    int ifico = node.get(1);
-                    consumption_by_age_rental[j] = consumption_by_age_rental[j] + (c_renter[j][ia][ifico] * f_interim_renter[j][ia][ifico]);
-                }
-
-                consumption_by_age[j] = consumption_by_age_sfha[j] + consumption_by_age_non_sfha[j] + consumption_by_age_rental[j];
-            }
-
-            double homeownership_rate = sfha_homeowners + non_sfha_homeowners;
-            double homeownership_rate_ratio = non_sfha_homeowners / sfha_homeowners;
-            double price_ratio = price_non_sfha / price_sfha;
-            double default_rate = (defaulters / (sfha_homeowners + non_sfha_homeowners));
-            output[0] = homeownership_rate;
-            output[1] = homeownership_rate_ratio;
-            output[2] = price_ratio;
-            output[3] = default_rate;
-
-            if (verbose.equals("yes")){
-                System.out.println("defaulters: " + defaulters);
-                System.out.println("sfha homeowners: " + sfha_homeowners);
-                System.out.println("non-sfha homeowners: " + non_sfha_homeowners);
-
-                System.out.println("homeownership rate: " + homeownership_rate);
-                System.out.println("homeownership ratio (non-sfha / sfha): " + homeownership_rate_ratio);
-                System.out.println("default rate: " + default_rate);
-                System.out.println("consumption by age (sfha): " + Arrays.toString(consumption_by_age_sfha));
-                System.out.println("consumption by age (non-sfha): " + Arrays.toString(consumption_by_age_non_sfha));
-                System.out.println("consumption by age (renter): " + Arrays.toString(consumption_by_age_rental));
-                System.out.println("consumption by age: (overall):" + Arrays.toString(consumption_by_age));
-                System.out.println("==================================");
-
-            }
-
-        }
-        return output;
+        Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = model.solve_household_problems(7.23, 5.78, "yes");
+        model.compute_distributions(household_policy_functions, "yes");
     }
-
-    double[] calibration(double price_sfha, double[] empirical_moments, String verbose){
-
-        double[] price_ratio_grid = {0.8}; //0.80
-        double[] alpha_sfha_grid = {0.52};  //2.2, 1, 0.50
-        double[] alpha_non_sfha_grid = {0.2}; //1.9, 0.9
-        double[] default_penalty_grid = {0}; //0.9, 0.05, 0.0707
-        double[] transfer_grid = {0};
-
-        double SS = 1e5; double AAS = 0; double AANS = 0; double PR = 0; double DD = 0;
-
-        // Building the state space for calibration (dim: 4)
-        Integer[][] matrix_calibration = new Integer[5][];
-        matrix_calibration[0] = ArrayUtils.toObject(IntStream.range(0, price_ratio_grid.length).toArray());
-        matrix_calibration[1] = ArrayUtils.toObject(IntStream.range(0, alpha_sfha_grid.length).toArray());
-        matrix_calibration[2] = ArrayUtils.toObject(IntStream.range(0, alpha_non_sfha_grid.length).toArray());
-        matrix_calibration[3] = ArrayUtils.toObject(IntStream.range(0, default_penalty_grid.length).toArray());
-        matrix_calibration[4] = ArrayUtils.toObject(IntStream.range(0, transfer_grid.length).toArray());
-        CartesianSet<Integer> state_space_calibration = new CartesianSet<>(matrix_calibration);
-        int Z_calibration = (int) state_space_calibration.getCount();
-        System.out.println("number of simulations: " + Z_calibration);
-
-        double[] model_moments = new double[empirical_moments.length];
-
-        for (int z = 0; z < Z_calibration; z++){
-            List<Integer> node = state_space_calibration.get(z);
-            price_non_sfha = price_ratio_grid[node.get(0)] * price_sfha;
-            alpha_sfha = alpha_sfha_grid[node.get(1)];
-            alpha_non_sfha = alpha_non_sfha_grid[node.get(2)];
-            d = default_penalty_grid[node.get(3)];
-            tau = transfer_grid[node.get(4)];
-            Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = solve_household_problems(price_sfha, price_non_sfha, verbose);
-            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions = compute_distributions(household_policy_functions, verbose);
-            model_moments = compute_market_clearing_and_moments(household_policy_functions, distributions, price_sfha,"yes", verbose);
-
-            double sse = 0;
-            for (int i = 0; i < model_moments.length; i++){
-                sse = sse + pow(model_moments[i] - empirical_moments[i], 2);
-            }
-            System.out.println("sse: " + sse);
-            if (sse <= SS){
-                SS = sse;
-                AAS = alpha_sfha;
-                AANS = alpha_non_sfha;
-                PR = price_non_sfha / price_sfha;
-                DD = d;
-            }
-
-            System.out.println("==================================");
-            System.out.println("moments of interest (model / empirical)");
-            System.out.println("homeownership rate: " + model_moments[0] + " / "  + empirical_moments[0]);
-            System.out.println("homeownership ratio: " + model_moments[1] + " / "  +  + empirical_moments[1]);
-            System.out.println("price ratio: " + model_moments[2] + " / "  + empirical_moments[2]);
-            System.out.println("foreclosure rate: : " + model_moments[3] + " / "  + empirical_moments[3]);
-            System.out.println("result: [" + sse + " , " + alpha_sfha + " , " + alpha_non_sfha + " , " + (price_non_sfha / price_sfha) + " , " + d + "]");
-            System.out.println("==================================");
-        }
-
-
-
-        double[] output = {SS, AAS, AANS, PR, DD};
-        return output;
-    }
-
-    public static void main (String[] args){
-
-        long start_time = System.nanoTime();
-
-        ShocksOff model = new ShocksOff();
-
-
-        double[] empirical_moments = new MiscFunctions().read_vector("/home/ahyan/Dropbox/Underwater/DataWork/calibration/moments_of_interest.csv", 4);
-        System.out.println(Arrays.toString(model.calibration(7.23, empirical_moments, "yes")));
-
-
-        long end_time = System.nanoTime();
-        System.out.println("run time = " + (end_time - start_time) * 1e-9 / 60 + " mins");
-
-    }
-
 }

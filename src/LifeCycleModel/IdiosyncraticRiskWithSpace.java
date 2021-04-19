@@ -1529,7 +1529,7 @@ public class IdiosyncraticRiskWithSpace {
         double price_non_sfha = price_sfha * 1.07;
 
         //model.calibration(price_sfha, empirical_moments, verbose_mode);
-        System.exit(123);
+        //System.exit(123);
 
         Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = model.solve_household_problems(price_sfha, price_non_sfha, verbose_mode);
         Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions = model.compute_distributions(household_policy_functions, verbose_mode);

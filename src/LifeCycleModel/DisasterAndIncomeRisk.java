@@ -15,16 +15,17 @@ public class DisasterAndIncomeRisk {
 
     MiscFunctions miscFunctions = new MiscFunctions();
 
-    int J = 40;                // lifespan in years
+    int J = 60;                // lifespan in years
+    int J_retirement = 45;     // retirement age
 
     // preferences
     double gamma = 3;          // CRRA utility term
     double psi = 250;          // bequest utility term
     double xi = 0.57;          // bequest utility term
-    double alpha_safe = 0;     // homeownership utility in non-SFHA
-    double alpha_risky = 5;    // homeownership utility in SFHA; alpha_risky > alpha_safe
+    double alpha_safe = 1;     // homeownership utility in non-SFHA
+    double alpha_risky = 1.2;    // homeownership utility in SFHA; alpha_risky > alpha_safe, 1.2
     double d;                  // default penalty (in utile)
-    double beta = 0.99;        // discount factor (based on Krishnamurthy)
+    double beta = 0.95;        // discount factor (based on Krishnamurthy)
 
     // subsidy/transfer due to disaster shock
     double tau;
@@ -51,7 +52,7 @@ public class DisasterAndIncomeRisk {
     // disaster risk
     double[] theta_grid = {0.00, 0.22};                     // values for disaster risk
     double[][] P_theta = {{0.99, 0.01}, {0.98, 0.02}};      // transition matrix for disaster Markov chain
-    double[][] P_e = {{0.95, 0.05}, {0.5, 0.5}};              // transition matrix for income Markov chain
+    double[][] P_e = {{0.95, 0.05}, {0.95, 0.05}};              // transition matrix for income Markov chain
 
     int N = 30;                // Term of mortgage, 30 years
     String credit_surface_filepath = "/home/ahyan/Dropbox/Underwater/DataWork/creditsurface/corelogic_credit_surface_2012.csv"; // file path for credit surface
@@ -108,9 +109,9 @@ public class DisasterAndIncomeRisk {
         LinearInterpolator linearInterpolator = new LinearInterpolator();
         PolynomialSplineFunction function = linearInterpolator.interpolate(age_grid, wage_grid);
 
-        if (age <= 45){
+        if (age <= J_retirement){
             y = function.value(age);
-        }else if (age > 45){
+        }else if (age > J_retirement){
             y = wage_grid[5];
         }
 
@@ -1084,7 +1085,9 @@ public class DisasterAndIncomeRisk {
         return output;
     }
 
-    Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> compute_distributions_pre_disaster(Quartet<List<double[][][][][][][]>, List<double[][][][][][]>, List<double[][][][]>, List<double[][][][]>> household_policy_functions, int verbose){
+    Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> compute_distributions_pre_disaster(
+            Quartet<List<double[][][][][][][]>, List<double[][][][][][]>, List<double[][][][]>, List<double[][][][]>> household_policy_functions,
+            double p_risky, double p_safe, int verbose){
 
         if (verbose >= 0){
             System.out.println("Computing distributions (pre-disaster).");
@@ -1207,7 +1210,7 @@ public class DisasterAndIncomeRisk {
         for (int ia = 0; ia < na; ia++){
             for (int ifico = 0; ifico < nfico; ifico++){
                 for (int ie = 0; ie < ne; ie++){
-                    sum = sum + f_newborn[0][ia][ifico][ie];
+                    sum = sum + f_newborn[j][ia][ifico][ie];
                 }
             }
         }
@@ -1224,7 +1227,7 @@ public class DisasterAndIncomeRisk {
         for (int iep = 0; iep < ne; iep++){
             int final_iep = iep;
             int final_j = j;
-            IntStream.range(0, Z_newborn).parallel().forEach(z -> {
+            for (int z = 0; z < Z_newborn; z++){
                 List<Integer> node = state_space_newborn.get(z);
                 int ia = node.get(0);
                 int ifico = node.get(1);
@@ -1252,9 +1255,28 @@ public class DisasterAndIncomeRisk {
                     int ificop = ArrayUtils.indexOf(fico_grid, fico_newborn[final_j][ia][ifico][ie]);
                     f_interim_renter[final_j + 1][iap][ificop][final_iep]
                             = f_interim_renter[final_j + 1][iap][ificop][final_iep] + (P_e[ie][final_iep] * f_newborn[final_j][ia][ifico][ie]);
+                }else {
+                    System.out.println("undefined action (newborn)");
                 }
-            });
+                if (f_newborn[final_j][ia][ifico][ie] < 0 | f_newborn[final_j][ia][ifico][ie] > 1){
+                    System.out.println("Invalid pdf weight (newborn): " + f_newborn[final_j][ia][ifico][ie]);
+                }
+            }
         }
+
+        /*
+        System.out.println("=====================");
+        for (int z = 0; z < Z_newborn; z++){
+            List<Integer> node = state_space_newborn.get(z);
+            int ia = node.get(0);
+            int ifico = node.get(1);
+            int ie = node.get(2);
+            if (f_newborn[j][ia][ifico][ie] > 0){
+                System.out.println(action_newborn[j][ia][ifico][ie] + " , " + f_newborn[j][ia][ifico][ie]);
+            }
+        }
+        System.out.println("=====================");
+         */
 
         // check cohort weights for j = 1
         double sum_risky = 0; double sum_safe = 0; double sum_renter = 0;
@@ -1334,15 +1356,13 @@ public class DisasterAndIncomeRisk {
                         f_interim_renter[final_j + 1][iap][ificop][final_iep]
                                 = f_interim_renter[final_j + 1][iap][ificop][final_iep]
                                 + (P_e[ie][final_iep] * f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
-                    }else {
-                        System.out.println("undefined action (risky)");
+                    }//else { System.out.println("undefined action (risky)"); }
+                    if (f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] < 0 | f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] > 1){
+                        System.out.println("Invalid pdf weight (risky): " + f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
                     }
+
                 }
 
-                // first a parallel for loop to transition agents in at-risk region based on their choices
-                //IntStream.range(0, Z_risky).parallel().forEach(z -> { });
-
-                //miscFunctions.pause(1);
 
 
                 for (int z = 0; z < Z_safe; z++){
@@ -1356,10 +1376,6 @@ public class DisasterAndIncomeRisk {
                     int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_safe[final_j][ia][ioltv][ifico][n][ie]);
                     int ificop = ArrayUtils.indexOf(fico_grid, fico_safe[final_j][ia][ioltv][ifico][n][ie]);
                     int np = (int) n_safe[final_j][ia][ioltv][ifico][n][ie];
-                    //System.out.println(j + " , " + ia + " , " + ioltv + " , " + ifico + " , " + n + " , " + ie + " , " + iap + " , " + ioltvp + " , " + ificop + " , " + np + " , " + a_safe[final_j][ia][ioltv][ifico][n][ie] + " , " + oltv_safe[final_j][ia][ioltv][ifico][n][ie] + " , " + V_safe[final_j][ia][ioltv][ifico][n][ie]);
-                    if (action_safe[final_j][ia][ioltv][ifico][n][ie] < 3.1){
-                        System.out.println(action_safe[final_j][ia][ioltv][ifico][n][ie] );
-                    }
                     // first, account for remaining and refinancing in the safe region
                     if (action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.1 | action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.2){
                         f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
@@ -1375,17 +1391,13 @@ public class DisasterAndIncomeRisk {
                         f_interim_renter[final_j + 1][iap][ificop][final_iep]
                                 = f_interim_renter[final_j + 1][iap][ificop][final_iep]
                                 + (P_e[ie][final_iep] * f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
-                    }else {
-                        System.out.println("undefined action (safe)");
+                    }//else { System.out.println("undefined action (safe)"); }
+                    if (f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] < 0 | f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] > 1){
+                        System.out.println("Invalid pdf weight (safe): " + f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
                     }
+
                 }
 
-                 
-
-                // second parallel for loop to transition agents in safe region to their chosen sectors
-                //IntStream.range(0, Z_safe).parallel().forEach(z -> { });
-
-                //miscFunctions.pause(1);
 
                 for (int z = 0; z < Z_rental; z++){
                     List<Integer> node = state_space_rental.get(z);
@@ -1411,16 +1423,11 @@ public class DisasterAndIncomeRisk {
                         f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
                                 = f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
                                 + (P_e[ie][final_iep] * f_interim_renter[final_j][ia][ifico][ie]);
-                    }else {
-                        System.out.println("undefined action (renter)");
+                    }//else { System.out.println("undefined action (renter)"); }
+                    if (f_interim_renter[final_j][ia][ifico][ie] < 0 | f_interim_renter[final_j][ia][ifico][ie] > 1){
+                        System.out.println("Invalid pdf weight (renter): " + f_interim_renter[final_j][ia][ifico][ie]);
                     }
                 }
-                // third parallel for loop to transition agents in the rental sector to their chosen sectors
-                //IntStream.range(0, Z_rental).parallel().forEach(z -> { });
-
-                //miscFunctions.pause(1);
-
-
             }
 
             // check cohort weights for j = 2
@@ -1462,6 +1469,840 @@ public class DisasterAndIncomeRisk {
 
         }
 
+        System.out.println("####################################");
+        System.out.println("Calculating moments of interest now.");
+        System.out.println("####################################");
+
+        // calculate the aggregate housing demand
+        double aggregate_housing_demand_for_risky_housing_newborns = 0;
+        double aggregate_housing_demand_for_safe_housing_newborns = 0;
+        double aggregate_housing_demand_for_rentals_newborns = 0;
+
+        j = 0;
+        for (int z = 0; z < Z_newborn; z++){
+            List<Integer> node = state_space_newborn.get(z);
+            int ia = node.get(0);
+            int ifico = node.get(1);
+            int ie = node.get(2);
+            // integrate to find the housing demand from newborns
+            if (action_newborn[j][ia][ifico][ie] == 1.0){
+                aggregate_housing_demand_for_risky_housing_newborns = aggregate_housing_demand_for_risky_housing_newborns + f_newborn[j][ia][ifico][ie];
+            }else if (action_newborn[j][ia][ifico][ie] == 3.0) {
+                aggregate_housing_demand_for_safe_housing_newborns = aggregate_housing_demand_for_safe_housing_newborns + f_newborn[j][ia][ifico][ie];
+            }else if (action_newborn[j][ia][ifico][ie] == 2.0) {
+                aggregate_housing_demand_for_rentals_newborns = aggregate_housing_demand_for_rentals_newborns + f_newborn[j][ia][ifico][ie];
+            }
+        }
+        //System.out.println(aggregate_housing_demand_for_rentals_newborns + " , " + aggregate_housing_demand_for_risky_housing_newborns + " , " + aggregate_housing_demand_for_safe_housing_newborns);
+
+        double aggregate_housing_demand_for_risky_housing_renters = 0;                  // renters -> risky
+        double aggregate_housing_demand_for_safe_housing_renters = 0;                   // renters -> safe
+        double aggregate_rental_demand_renters = 0;                                     // renters -> renters (remain)
+
+        double aggregate_rental_demand_risky_homeowners = 0;                            // risky -> renters (move/default)
+        double aggregate_housing_demand_for_risky_housing_risky_homeowners = 0;         // risky -> risky (remain/refinance)
+        double aggregate_housing_demand_for_safe_housing_risky_homeowners = 0;          // risky -> safe (move)
+        double aggregate_defaulters_risky_homeowners = 0;                               // risky defaulters
+
+        double aggregate_rental_demand_safe_homeowners = 0;                             // safe -> renters (move/default)
+        double aggregate_housing_demand_for_safe_housing_safe_homeowners = 0;           // safe -> safe (remain/refinance)
+        double aggregate_housing_demand_for_risky_housing_safe_homeowners = 0;          // safe -> risky (move)
+        double aggregate_defaulters_safe_homeowners = 0;                                // safe defaulters
+
+        double aggregate_housing_supply_risky_homeoweners_terminal = 0;                 // terminal risky
+        double aggregate_housing_supply_safe_homeoweners_terminal = 0;                  // terminal safe
+
+        double attrition_risky = 0;
+        double attrition_safe = 0;
+        double attrition_renter = 0;
+
+        double current_rate_risky = 0;
+
+        for (j = 1; j < J; j++){
+            for (int z = 0; z < Z_rental; z++){
+                List<Integer> node = state_space_rental.get(z);
+                int ia = node.get(0);
+                int ifico = node.get(1);
+                int ie = node.get(2);
+                if (action_renter[j][ia][ifico][ie] == 2.1){
+                    aggregate_rental_demand_renters = aggregate_rental_demand_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                else if (action_renter[j][ia][ifico][ie] == 2.31){
+                    aggregate_housing_demand_for_risky_housing_renters = aggregate_housing_demand_for_risky_housing_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                else if (action_renter[j][ia][ifico][ie] == 2.33){
+                    aggregate_housing_demand_for_safe_housing_renters = aggregate_housing_demand_for_safe_housing_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                if (action_renter[j][ia][ifico][ie] != 2.1
+                        & action_renter[j][ia][ifico][ie] != 2.31
+                        & action_renter[j][ia][ifico][ie] != 2.33){
+                    attrition_renter = attrition_renter + f_interim_renter[j][ia][ifico][ie];
+                }
+            }
+            //System.out.println(aggregate_rental_demand_renters + " , " + aggregate_housing_demand_for_risky_housing_renters + " , " + aggregate_housing_demand_for_safe_housing_renters);
+
+            for (int z = 0; z < Z_risky; z++){
+                List<Integer> node = state_space_risky.get(z);
+                int ia = node.get(0);
+                int ioltv = node.get(1);
+                int ifico = node.get(2);
+                int n = node.get(3);
+                int itheta = node.get(4);
+                int ie = node.get(5);
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.1 | action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.2){
+                    aggregate_housing_demand_for_risky_housing_risky_homeowners = aggregate_housing_demand_for_risky_housing_risky_homeowners
+                            + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }else if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.31){
+                    aggregate_housing_demand_for_safe_housing_risky_homeowners = aggregate_housing_demand_for_safe_housing_risky_homeowners
+                            + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }else if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.32 | action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.4){
+                    aggregate_rental_demand_risky_homeowners = aggregate_rental_demand_risky_homeowners + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.4){
+                    aggregate_defaulters_risky_homeowners = aggregate_defaulters_risky_homeowners + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.5){
+                    aggregate_housing_supply_risky_homeoweners_terminal = aggregate_housing_supply_risky_homeoweners_terminal + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.1
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.2
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.31
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.32
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.4
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.5){
+                    attrition_risky = attrition_risky + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.1){
+                    current_rate_risky = current_rate_risky + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+            }
+
+            for (int z = 0; z < Z_safe; z++){
+                List<Integer> node = state_space_safe.get(z);
+                int ia = node.get(0);
+                int ioltv = node.get(1);
+                int ifico = node.get(2);
+                int n = node.get(3);
+                int ie = node.get(4);
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.1 | action_safe[j][ia][ioltv][ifico][n][ie] == 3.2){
+                    aggregate_housing_demand_for_safe_housing_safe_homeowners = aggregate_housing_demand_for_safe_housing_safe_homeowners
+                            + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }else if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.31){
+                    aggregate_housing_demand_for_risky_housing_safe_homeowners = aggregate_housing_demand_for_risky_housing_safe_homeowners
+                            + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }else if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.32 | action_safe[j][ia][ioltv][ifico][n][ie] == 3.4){
+                    aggregate_rental_demand_safe_homeowners = aggregate_rental_demand_safe_homeowners + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.4){
+                    aggregate_defaulters_safe_homeowners = aggregate_defaulters_safe_homeowners + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.5){
+                    aggregate_housing_supply_safe_homeoweners_terminal = aggregate_housing_supply_safe_homeoweners_terminal + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] != 3.1
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.2
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.31
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.32
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.4
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.5){
+                    attrition_safe  = attrition_safe + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+            }
+
+
+        }
+
+        // calculations for market clearing
+        double aggregate_risky_housing_demand = aggregate_housing_demand_for_risky_housing_newborns + aggregate_housing_demand_for_risky_housing_renters + aggregate_housing_demand_for_risky_housing_safe_homeowners;
+        double aggregate_risky_housing_supply = aggregate_rental_demand_risky_homeowners + aggregate_housing_demand_for_safe_housing_risky_homeowners + aggregate_housing_supply_risky_homeoweners_terminal;
+        double excess_risky_housing_demand = (aggregate_risky_housing_demand - aggregate_risky_housing_supply);
+        System.out.println("Demand for risky housing: " + aggregate_risky_housing_demand);
+        System.out.println("Supply for risky housing: " + aggregate_risky_housing_supply);
+        System.out.println("Excess demand for risky housing: " + excess_risky_housing_demand);
+        if (excess_risky_housing_demand > 0.001){System.out.println("market for risky housing may not have cleared!");}
+        System.out.println("====================================");
+
+        // calculate homeownership ratio (risky and safe)
+        double homeownership_rate_risky = aggregate_housing_demand_for_risky_housing_newborns + aggregate_housing_demand_for_risky_housing_renters
+                + aggregate_housing_demand_for_risky_housing_risky_homeowners + aggregate_housing_demand_for_risky_housing_safe_homeowners;
+        double homeownership_rate_safe = aggregate_housing_demand_for_safe_housing_newborns + aggregate_housing_demand_for_safe_housing_renters
+                + aggregate_housing_demand_for_safe_housing_risky_homeowners + aggregate_housing_demand_for_safe_housing_safe_homeowners;
+
+        System.out.println("Risky homeownership rate: " + homeownership_rate_risky);
+        System.out.println("Safe homeownership rate: " + homeownership_rate_safe);
+        System.out.println("Overall homeownership rate: " + (homeownership_rate_risky + homeownership_rate_safe));
+        System.out.println("Safe-to-risky homeownership ratio: " + (homeownership_rate_safe / homeownership_rate_risky));
+        System.out.println("====================================");
+
+        // calculate the price ratio (safe to risky)
+        double price_ratio = p_safe / p_risky;
+        System.out.println("Safe-to-risky price ratio: " + price_ratio);
+        System.out.println("====================================");
+
+        // calculate default rate in the economy
+        double risky_default_rate = aggregate_defaulters_risky_homeowners;
+        double safe_default_rate = aggregate_defaulters_safe_homeowners;
+        double default_rate = (risky_default_rate + safe_default_rate);
+        System.out.println("Risky default rate: " + risky_default_rate);
+        System.out.println("Safe default rate: " + safe_default_rate);
+        System.out.println("Overall default rate: " + default_rate);
+        System.out.println("====================================");
+
+        System.out.println("Current rate (risky / overall): " + current_rate_risky);
+        System.out.println("Current rate (risky / risky): " + (current_rate_risky / homeownership_rate_risky));
+        System.out.println("====================================");
+        
+        System.out.println("Attrition risky: " + attrition_risky);
+        System.out.println("Attrition safe: " + attrition_safe);
+        System.out.println("Attrition renter: " + attrition_renter);
+        System.out.println("====================================");
+
+        Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> output = new Quartet<>(f_interim_risky_homeowner, f_interim_safe_homeowner, f_interim_renter, f_newborn);
+        return output;
+
+
+    }
+
+
+    Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> compute_distributions_post_disaster(
+            Quartet<List<double[][][][][][][]>, List<double[][][][][][]>, List<double[][][][]>, List<double[][][][]>> household_policy_functions,
+            double p_risky, double p_safe, int verbose){
+
+        if (verbose >= 0){
+            System.out.println("Computing distributions (post-disaster).");
+        }
+
+        // order of state variables: (age, a, oltv, fico, n, theta, e)
+        // order of output array: (age, VV, CC, AA/BB, OO, FF, NN, action)
+
+        int na = a_grid.length;          // number of asset points
+        int noltv = oltv_grid.length;    // number of oltv points
+        int nfico = fico_grid.length;    // number of fico points
+        int ntheta = theta_grid.length;  // number of disaster risk points
+        int ne = 2;                      // number of productivity points (employed or not)
+
+        // Building the state space for safe area (dim: 5)
+        Integer[][] matrix_safe = new Integer[5][];
+        matrix_safe[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
+        matrix_safe[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
+        matrix_safe[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_safe[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
+        matrix_safe[4] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
+        CartesianSet<Integer> state_space_safe = new CartesianSet<>(matrix_safe);
+        int Z_safe = (int) state_space_safe.getCount();
+
+        // Building the state space for rental (dim: 3)
+        Integer[][] matrix_rental = new Integer[3][];
+        matrix_rental[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
+        matrix_rental[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_rental[2] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
+        CartesianSet<Integer> state_space_rental = new CartesianSet<>(matrix_rental);
+        int Z_rental = (int) state_space_rental.getCount();
+
+        // Building the state space for at-risk area (dim: 6)
+        Integer[][] matrix_risky = new Integer[6][];
+        matrix_risky[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
+        matrix_risky[1] = ArrayUtils.toObject(IntStream.range(0, noltv).toArray());
+        matrix_risky[2] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_risky[3] = ArrayUtils.toObject(IntStream.range(0, N).toArray());
+        matrix_risky[4] = ArrayUtils.toObject(IntStream.range(0, ntheta).toArray());
+        matrix_risky[5] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
+        CartesianSet<Integer> state_space_risky = new CartesianSet<>(matrix_risky);
+        int Z_risky = (int) state_space_risky.getCount();
+
+        // Building the state space for newborns (dim: 3)
+        Integer[][] matrix_newborn = new Integer[3][];
+        matrix_newborn[0] = ArrayUtils.toObject(IntStream.range(0, na).toArray());
+        matrix_newborn[1] = ArrayUtils.toObject(IntStream.range(0, nfico).toArray());
+        matrix_newborn[2] = ArrayUtils.toObject(IntStream.range(0, ne).toArray());
+        CartesianSet<Integer> state_space_newborn = new CartesianSet<>(matrix_newborn);
+        int Z_newborn = (int) state_space_newborn.getCount();
+
+
+        // unpacking the quartet containing all the policy functions
+        List<double[][][][][][][]> risky_homeowner_policy_functions = household_policy_functions.getValue0();
+        List<double[][][][][][]> safe_homeowner_policy_functions = household_policy_functions.getValue1();
+        List<double[][][][]> renter_policy_functions = household_policy_functions.getValue2();
+        List<double[][][][]> newborn_policy_functions = household_policy_functions.getValue3();
+
+        // Initialize grid for value functions, policy functions
+        double[][][][][][][] V_risky = risky_homeowner_policy_functions.get(0);
+        double[][][][][][][] c_risky = risky_homeowner_policy_functions.get(1);
+        double[][][][][][][] a_risky = risky_homeowner_policy_functions.get(2);
+        double[][][][][][][] oltv_risky = risky_homeowner_policy_functions.get(3);
+        double[][][][][][][] fico_risky = risky_homeowner_policy_functions.get(4);
+        double[][][][][][][] n_risky = risky_homeowner_policy_functions.get(5);
+        double[][][][][][][] action_risky = risky_homeowner_policy_functions.get(6);
+
+        double[][][][][][] V_safe = safe_homeowner_policy_functions.get(0);
+        double[][][][][][] c_safe = safe_homeowner_policy_functions.get(1);
+        double[][][][][][] a_safe = safe_homeowner_policy_functions.get(2);
+        double[][][][][][] oltv_safe = safe_homeowner_policy_functions.get(3);
+        double[][][][][][] fico_safe = safe_homeowner_policy_functions.get(4);
+        double[][][][][][] n_safe = safe_homeowner_policy_functions.get(5);
+        double[][][][][][] action_safe = safe_homeowner_policy_functions.get(6);
+
+        double[][][][] V_renter = renter_policy_functions.get(0);
+        double[][][][] c_renter = renter_policy_functions.get(1);
+        double[][][][] a_renter = renter_policy_functions.get(2);
+        double[][][][] oltv_renter = renter_policy_functions.get(3);
+        double[][][][] fico_renter = renter_policy_functions.get(4);
+        double[][][][] n_renter = renter_policy_functions.get(5);
+        double[][][][] action_renter = renter_policy_functions.get(6);
+
+        double[][][][] V_newborn = newborn_policy_functions.get(0);
+        double[][][][] c_newborn = newborn_policy_functions.get(1);
+        double[][][][] a_newborn = newborn_policy_functions.get(2);
+        double[][][][] oltv_newborn = newborn_policy_functions.get(3);
+        double[][][][] fico_newborn = newborn_policy_functions.get(4);
+        double[][][][] n_newborn = newborn_policy_functions.get(5);
+        double[][][][] action_newborn = newborn_policy_functions.get(6);
+
+        // tensors to hold the distros
+        double[][][][][][][] f_interim_risky_homeowner = new double[J][na][noltv][nfico][N + 1][ntheta][ne];
+        double[][][][][][] f_interim_safe_homeowner = new double[J][na][noltv][nfico][N + 1][ne];
+        double[][][][] f_interim_renter = new double[J][na][nfico][ne];
+        double[][][][] f_newborn = new double[J][na][nfico][ne];
+
+        //====================================//
+        // INITIALIZING THE DISTRIBUTION
+        // set age at zero in preparation for the forward induction process
+        int j = 0;
+
+        //fix the initial distribution, f_0, uniform weights (for now)
+        double[] asset_distribution = miscFunctions.read_vector("/home/ahyan/Dropbox/Underwater/DataWork/calibration/asset_distribution.csv", na);
+        double[] fico_distribution = miscFunctions.read_vector("/home/ahyan/Dropbox/Underwater/DataWork/calibration/fico_distribution.csv", nfico);
+        double[] wage_distribution = {0.95, 0.05};
+        for (int ia = 0; ia < na; ia++){
+            for (int ifico = 0; ifico < nfico; ifico++){
+                for (int ie = 0; ie < ne; ie++){
+                    f_newborn[j][ia][ifico][ie] = asset_distribution[ia] * fico_distribution[ifico] * wage_distribution[ie] / J;
+                }
+            }
+        }
+
+        // just check that cohort weight for j = 0 adds to 1/J
+        double sum = 0;
+        for (int ia = 0; ia < na; ia++){
+            for (int ifico = 0; ifico < nfico; ifico++){
+                for (int ie = 0; ie < ne; ie++){
+                    sum = sum + f_newborn[j][ia][ifico][ie];
+                }
+            }
+        }
+
+        if (verbose == 2){
+            System.out.println(j + " , " + sum);
+        }
+
+        //====================================//
+
+        // NOW TRANSITIONING NEWBORNS TO HOMEOWNERS AND RENTERS
+        // all nested within wage loop since that shock effects everyone regardless of housing status
+        // no theta loop as this is pre-Sandy so ithetap = 0 (disaster shocks off)
+        for (int ithetap = 0; ithetap < ntheta; ithetap++){
+            for (int iep = 0; iep < ne; iep++){
+                int final_iep = iep;
+                int final_j = j;
+                for (int z = 0; z < Z_newborn; z++){
+                    List<Integer> node = state_space_newborn.get(z);
+                    int ia = node.get(0);
+                    int ifico = node.get(1);
+                    int ie = node.get(2);
+                    // newborns -> risky homeowners
+                    if (action_newborn[final_j][ia][ifico][ie] == 1.0){
+                        int iap = ArrayUtils.indexOf(a_grid, a_newborn[final_j][ia][ifico][ie]);
+                        int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_newborn[final_j][ia][ifico][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_newborn[final_j][ia][ifico][ie]);
+                        int np = (int) n_newborn[final_j][ia][ifico][ie];
+                        f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                = f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                + (P_theta[0][ithetap] * P_e[ie][final_iep] * f_newborn[final_j][ia][ifico][ie]);
+                    }// newborns -> safe homeowners
+                    else if (action_newborn[final_j][ia][ifico][ie] == 3.0){
+                        int iap = ArrayUtils.indexOf(a_grid, a_newborn[final_j][ia][ifico][ie]);
+                        int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_newborn[final_j][ia][ifico][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_newborn[final_j][ia][ifico][ie]);
+                        int np = (int) n_newborn[final_j][ia][ifico][ie];
+                        f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                                = f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep] + (P_e[ie][final_iep] * f_newborn[final_j][ia][ifico][ie]);
+                    }// newborns -> renters
+                    else if (action_newborn[final_j][ia][ifico][ie] == 2.0){
+                        int iap = ArrayUtils.indexOf(a_grid, a_newborn[final_j][ia][ifico][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_newborn[final_j][ia][ifico][ie]);
+                        f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                = f_interim_renter[final_j + 1][iap][ificop][final_iep] + (P_e[ie][final_iep] * f_newborn[final_j][ia][ifico][ie]);
+                    }else {
+                        System.out.println("undefined action (newborn)");
+                    }
+                    if (f_newborn[final_j][ia][ifico][ie] < 0 | f_newborn[final_j][ia][ifico][ie] > 1){
+                        System.out.println("Invalid pdf weight (newborn): " + f_newborn[final_j][ia][ifico][ie]);
+                    }
+                }
+            }
+        }
+
+
+        /*
+        System.out.println("=====================");
+        for (int z = 0; z < Z_newborn; z++){
+            List<Integer> node = state_space_newborn.get(z);
+            int ia = node.get(0);
+            int ifico = node.get(1);
+            int ie = node.get(2);
+            if (f_newborn[j][ia][ifico][ie] > 0){
+                System.out.println(action_newborn[j][ia][ifico][ie] + " , " + f_newborn[j][ia][ifico][ie]);
+            }
+        }
+        System.out.println("=====================");
+         */
+
+        // check cohort weights for j = 1
+        double sum_risky = 0; double sum_safe = 0; double sum_renter = 0;
+        for (int ia = 0; ia < na; ia++){
+            for (int ioltv = 0; ioltv < noltv; ioltv++){
+                for (int ifico = 0; ifico < nfico; ifico++){
+                    for (int n = 0; n < N; n++){
+                        for (int itheta = 0; itheta < ntheta; itheta++){
+                            for (int ie = 0; ie < ne; ie++){
+                                sum_risky = sum_risky + f_interim_risky_homeowner[j + 1][ia][ioltv][ifico][n][itheta][ie];
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        for (int ia = 0; ia < na; ia++){
+            for (int ioltv = 0; ioltv < noltv; ioltv++){
+                for (int ifico = 0; ifico < nfico; ifico++){
+                    for (int n = 0; n < N; n++){
+                        for (int ie = 0; ie < ne; ie++){
+                            sum_safe = sum_safe + f_interim_safe_homeowner[j + 1][ia][ioltv][ifico][n][ie];
+                        }
+                    }
+                }
+            }
+        }
+        for (int ia = 0; ia < na; ia++){
+            for (int ifico = 0; ifico < nfico; ifico++){
+                for (int ie = 0; ie < ne; ie++){
+                    sum_renter = sum_renter + f_interim_renter[j + 1][ia][ifico][ie];
+                }
+            }
+        }
+        if (verbose == 2){
+            System.out.println((j + 1) + " , " + sum_risky + " , " + sum_safe + " , " + sum_renter + " , " + (sum_risky + sum_safe + sum_renter));
+        }
+        //====================================//
+
+
+        // NOW TRANSITION THE j=1 cohort to j=2 and then through to end of life, j = J.
+        for (j = 1; j < (J - 1); j++){
+
+            // need a for loop with theta and e and a separate loop with just e to avoid double counting (and blow up)
+            for (int ithetap = 0; ithetap < ntheta; ithetap++){
+                for (int iep = 0; iep < ne; iep++){
+
+                    int final_j = j;
+                    int final_iep = iep;
+
+                    for (int z = 0; z < Z_risky; z++){
+                        List<Integer> node = state_space_risky.get(z);
+                        int ia = node.get(0);
+                        int ioltv = node.get(1);
+                        int ifico = node.get(2);
+                        int n = node.get(3);
+                        int itheta = node.get(4);
+                        int ie = node.get(5);
+                        int iap = ArrayUtils.indexOf(a_grid, a_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                        int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                        int np = (int) n_risky[final_j][ia][ioltv][ifico][n][itheta][ie];
+                        // giving state of an agent, x \in X, find whether it wants to stay current or refinance and if so then for that
+                        // agent find x' and transitioning
+                        // loop for homeowners wanting to remain in at-risk region (by staying current(1.1) or refinance(1.2))
+                        if (action_risky[final_j][ia][ioltv][ifico][n][itheta][ie] == 1.1 | action_risky[final_j][ia][ioltv][ifico][n][itheta][ie] == 1.2){
+                            f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                    = f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep] +
+                                    (P_theta[itheta][ithetap] * P_e[ie][final_iep] * f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                        }
+                        if (f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] < 0 | f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] > 1){
+                            System.out.println("Invalid pdf weight (risky): " + f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                        }
+
+                    }
+
+
+
+                    for (int z = 0; z < Z_safe; z++){
+                        List<Integer> node = state_space_safe.get(z);
+                        int ia = node.get(0);
+                        int ioltv = node.get(1);
+                        int ifico = node.get(2);
+                        int n = node.get(3);
+                        int ie = node.get(4);
+                        int iap = ArrayUtils.indexOf(a_grid, a_safe[final_j][ia][ioltv][ifico][n][ie]);
+                        int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_safe[final_j][ia][ioltv][ifico][n][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_safe[final_j][ia][ioltv][ifico][n][ie]);
+                        int np = (int) n_safe[final_j][ia][ioltv][ifico][n][ie];
+                        if (action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.31){
+                            f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                    = f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                    + (P_theta[0][ithetap] * P_e[ie][final_iep] * f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
+                        }
+                        if (f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] < 0 | f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] > 1){
+                            System.out.println("Invalid pdf weight (safe): " + f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
+                        }
+
+                    }
+
+
+                    for (int z = 0; z < Z_rental; z++){
+                        List<Integer> node = state_space_rental.get(z);
+                        int ia = node.get(0);
+                        int ifico = node.get(1);
+                        int ie = node.get(2);
+                        int iap = ArrayUtils.indexOf(a_grid, a_renter[final_j][ia][ifico][ie]);
+                        int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_renter[final_j][ia][ifico][ie]);
+                        int ificop = ArrayUtils.indexOf(fico_grid, fico_renter[final_j][ia][ifico][ie]);
+                        int np = (int) n_renter[final_j][ia][ifico][ie];
+                        if (action_renter[final_j][ia][ifico][ie] == 2.31) {
+                            f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                    = f_interim_risky_homeowner[final_j + 1][iap][ioltvp][ificop][np][ithetap][final_iep]
+                                    + (P_theta[0][ithetap] * P_e[ie][final_iep] * f_interim_renter[final_j][ia][ifico][ie]);
+                        }
+                        if (f_interim_renter[final_j][ia][ifico][ie] < 0 | f_interim_renter[final_j][ia][ifico][ie] > 1){
+                            System.out.println("Invalid pdf weight (renter): " + f_interim_renter[final_j][ia][ifico][ie]);
+                        }
+                    }
+                }
+            }
+
+            // first, a super loop for productivity. See everyone faces this shock, everything should be nested  within this loop
+            for (int iep = 0; iep < ne; iep++){
+
+                // since disaster shock is turned off, ithetap = 0 through out no ithetap loop (ithetap = 0) has been declared at the start of this method
+                int final_j = j;
+                int final_iep = iep;
+
+                for (int z = 0; z < Z_risky; z++){
+                    List<Integer> node = state_space_risky.get(z);
+                    int ia = node.get(0);
+                    int ioltv = node.get(1);
+                    int ifico = node.get(2);
+                    int n = node.get(3);
+                    int itheta = node.get(4);
+                    int ie = node.get(5);
+                    int iap = ArrayUtils.indexOf(a_grid, a_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    int ificop = ArrayUtils.indexOf(fico_grid, fico_risky[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    int np = (int) n_risky[final_j][ia][ioltv][ifico][n][itheta][ie];
+                    // giving state of an agent, x \in X, find whether it wants to stay current or refinance and if so then for that
+                    // agent find x' and transitioning
+                    // do the same but for risky homeowners wishing to move to the safe region (1.31)
+                    if (action_risky[final_j][ia][ioltv][ifico][n][itheta][ie] == 1.31){
+                    f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                            = f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                            + (P_e[ie][final_iep] * f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    } // now do the same but for risky homeowners moving to rental (1.32) or defaulting to rental (1.4)
+                    else //if (action_risky[final_j][ia][ioltv][ifico][n][itheta][ie] == 1.32 | action_risky[final_j][ia][ioltv][ifico][n][itheta][ie] == 1.4)
+                    {
+                        f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                = f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                + (P_e[ie][final_iep] * f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    }//else {
+                     //   System.out.println("undefined action (risky)");
+                    //}
+                    if (f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] < 0 | f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie] > 1){
+                        System.out.println("Invalid pdf weight (risky): " + f_interim_risky_homeowner[final_j][ia][ioltv][ifico][n][itheta][ie]);
+                    }
+
+                }
+
+
+
+                for (int z = 0; z < Z_safe; z++){
+                    List<Integer> node = state_space_safe.get(z);
+                    int ia = node.get(0);
+                    int ioltv = node.get(1);
+                    int ifico = node.get(2);
+                    int n = node.get(3);
+                    int ie = node.get(4);
+                    int iap = ArrayUtils.indexOf(a_grid, a_safe[final_j][ia][ioltv][ifico][n][ie]);
+                    int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_safe[final_j][ia][ioltv][ifico][n][ie]);
+                    int ificop = ArrayUtils.indexOf(fico_grid, fico_safe[final_j][ia][ioltv][ifico][n][ie]);
+                    int np = (int) n_safe[final_j][ia][ioltv][ifico][n][ie];
+                    // first, account for remaining and refinancing in the safe region
+                    if (action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.1 | action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.2){
+                        f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                                = f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                                + (P_e[ie][final_iep] * f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
+                    }// now do the same but for safe agent residents wanting to move to rental (3.32) or defaulting to rental (3.4)
+                    else if (action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.32 | action_safe[final_j][ia][ioltv][ifico][n][ie] == 3.4){
+                        f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                = f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                + (P_e[ie][final_iep] * f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
+                    }//else { System.out.println("undefined action (safe)"); }
+                    if (f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] < 0 | f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie] > 1){
+                        System.out.println("Invalid pdf weight (safe): " + f_interim_safe_homeowner[final_j][ia][ioltv][ifico][n][ie]);
+                    }
+
+                }
+
+
+                for (int z = 0; z < Z_rental; z++){
+                    List<Integer> node = state_space_rental.get(z);
+                    int ia = node.get(0);
+                    int ifico = node.get(1);
+                    int ie = node.get(2);
+                    int iap = ArrayUtils.indexOf(a_grid, a_renter[final_j][ia][ifico][ie]);
+                    int ioltvp = ArrayUtils.indexOf(oltv_grid, oltv_renter[final_j][ia][ifico][ie]);
+                    int ificop = ArrayUtils.indexOf(fico_grid, fico_renter[final_j][ia][ifico][ie]);
+                    int np = (int) n_renter[final_j][ia][ifico][ie];
+                    // first, account for agents wanting to remain in rental
+                    if (action_renter[final_j][ia][ifico][ie] == 2.1){
+                        f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                = f_interim_renter[final_j + 1][iap][ificop][final_iep]
+                                + (P_e[ie][final_iep] * f_interim_renter[final_j][ia][ifico][ie]);
+                    }// lastly renters choosing to become safe homeowners
+                    else if (action_renter[final_j][ia][ifico][ie] == 2.33) {
+                        f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                                = f_interim_safe_homeowner[final_j + 1][iap][ioltvp][ificop][np][final_iep]
+                                + (P_e[ie][final_iep] * f_interim_renter[final_j][ia][ifico][ie]);
+                    }//else { System.out.println("undefined action (renter)"); }
+                    if (f_interim_renter[final_j][ia][ifico][ie] < 0 | f_interim_renter[final_j][ia][ifico][ie] > 1){
+                        System.out.println("Invalid pdf weight (renter): " + f_interim_renter[final_j][ia][ifico][ie]);
+                    }
+                }
+            }
+
+            // check cohort weights for j = 2
+            sum_risky = 0; sum_safe = 0; sum_renter = 0;
+            for (int ia = 0; ia < na; ia++){
+                for (int ioltv = 0; ioltv < noltv; ioltv++){
+                    for (int ifico = 0; ifico < nfico; ifico++){
+                        for (int n = 0; n < N; n++){
+                            for (int itheta = 0; itheta < ntheta; itheta++){
+                                for (int ie = 0; ie < ne; ie++){
+                                    sum_risky = sum_risky + f_interim_risky_homeowner[j + 1][ia][ioltv][ifico][n][itheta][ie];
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            for (int ia = 0; ia < na; ia++){
+                for (int ioltv = 0; ioltv < noltv; ioltv++){
+                    for (int ifico = 0; ifico < nfico; ifico++){
+                        for (int n = 0; n < N; n++){
+                            for (int ie = 0; ie < ne; ie++){
+                                sum_safe = sum_safe + f_interim_safe_homeowner[j + 1][ia][ioltv][ifico][n][ie];
+                            }
+                        }
+                    }
+                }
+            }
+            for (int ia = 0; ia < na; ia++){
+                for (int ifico = 0; ifico < nfico; ifico++){
+                    for (int ie = 0; ie < ne; ie++){
+                        sum_renter = sum_renter + f_interim_renter[j + 1][ia][ifico][ie];
+                    }
+                }
+            }
+            if (verbose == 2){
+                System.out.println((j + 1) + " , " + sum_risky + " , " + sum_safe + " , " + sum_renter + " , " + (sum_risky + sum_safe + sum_renter));
+            }
+
+        }
+
+        System.out.println("####################################");
+        System.out.println("Calculating moments of interest now.");
+        System.out.println("####################################");
+
+        // calculate the aggregate housing demand
+        double aggregate_housing_demand_for_risky_housing_newborns = 0;
+        double aggregate_housing_demand_for_safe_housing_newborns = 0;
+        double aggregate_housing_demand_for_rentals_newborns = 0;
+
+        j = 0;
+        for (int z = 0; z < Z_newborn; z++){
+            List<Integer> node = state_space_newborn.get(z);
+            int ia = node.get(0);
+            int ifico = node.get(1);
+            int ie = node.get(2);
+            // integrate to find the housing demand from newborns
+            if (action_newborn[j][ia][ifico][ie] == 1.0){
+                aggregate_housing_demand_for_risky_housing_newborns = aggregate_housing_demand_for_risky_housing_newborns + f_newborn[j][ia][ifico][ie];
+            }else if (action_newborn[j][ia][ifico][ie] == 3.0) {
+                aggregate_housing_demand_for_safe_housing_newborns = aggregate_housing_demand_for_safe_housing_newborns + f_newborn[j][ia][ifico][ie];
+            }else if (action_newborn[j][ia][ifico][ie] == 2.0) {
+                aggregate_housing_demand_for_rentals_newborns = aggregate_housing_demand_for_rentals_newborns + f_newborn[j][ia][ifico][ie];
+            }
+        }
+        //System.out.println(aggregate_housing_demand_for_rentals_newborns + " , " + aggregate_housing_demand_for_risky_housing_newborns + " , " + aggregate_housing_demand_for_safe_housing_newborns);
+
+        double aggregate_housing_demand_for_risky_housing_renters = 0;                  // renters -> risky
+        double aggregate_housing_demand_for_safe_housing_renters = 0;                   // renters -> safe
+        double aggregate_rental_demand_renters = 0;                                     // renters -> renters (remain)
+
+        double aggregate_rental_demand_risky_homeowners = 0;                            // risky -> renters (move/default)
+        double aggregate_housing_demand_for_risky_housing_risky_homeowners = 0;         // risky -> risky (remain/refinance)
+        double aggregate_housing_demand_for_safe_housing_risky_homeowners = 0;          // risky -> safe (move)
+        double aggregate_defaulters_risky_homeowners = 0;                               // risky defaulters
+
+        double aggregate_rental_demand_safe_homeowners = 0;                             // safe -> renters (move/default)
+        double aggregate_housing_demand_for_safe_housing_safe_homeowners = 0;           // safe -> safe (remain/refinance)
+        double aggregate_housing_demand_for_risky_housing_safe_homeowners = 0;          // safe -> risky (move)
+        double aggregate_defaulters_safe_homeowners = 0;                                // safe defaulters
+
+        double aggregate_housing_supply_risky_homeoweners_terminal = 0;                 // terminal risky
+        double aggregate_housing_supply_safe_homeoweners_terminal = 0;                  // terminal safe
+
+        double attrition_risky = 0;
+        double attrition_safe = 0;
+        double attrition_renter = 0;
+
+        double current_rate_risky = 0;
+
+        for (j = 1; j < J; j++){
+            for (int z = 0; z < Z_rental; z++){
+                List<Integer> node = state_space_rental.get(z);
+                int ia = node.get(0);
+                int ifico = node.get(1);
+                int ie = node.get(2);
+                if (action_renter[j][ia][ifico][ie] == 2.1){
+                    aggregate_rental_demand_renters = aggregate_rental_demand_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                else if (action_renter[j][ia][ifico][ie] == 2.31){
+                    aggregate_housing_demand_for_risky_housing_renters = aggregate_housing_demand_for_risky_housing_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                else if (action_renter[j][ia][ifico][ie] == 2.33){
+                    aggregate_housing_demand_for_safe_housing_renters = aggregate_housing_demand_for_safe_housing_renters + f_interim_renter[j][ia][ifico][ie];
+                }
+                if (action_renter[j][ia][ifico][ie] != 2.1
+                        & action_renter[j][ia][ifico][ie] != 2.31
+                        & action_renter[j][ia][ifico][ie] != 2.33){
+                    attrition_renter = attrition_renter + f_interim_renter[j][ia][ifico][ie];
+                }
+            }
+            //System.out.println(aggregate_rental_demand_renters + " , " + aggregate_housing_demand_for_risky_housing_renters + " , " + aggregate_housing_demand_for_safe_housing_renters);
+
+            for (int z = 0; z < Z_risky; z++){
+                List<Integer> node = state_space_risky.get(z);
+                int ia = node.get(0);
+                int ioltv = node.get(1);
+                int ifico = node.get(2);
+                int n = node.get(3);
+                int itheta = node.get(4);
+                int ie = node.get(5);
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.1 | action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.2){
+                    aggregate_housing_demand_for_risky_housing_risky_homeowners = aggregate_housing_demand_for_risky_housing_risky_homeowners
+                            + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }else if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.31){
+                    aggregate_housing_demand_for_safe_housing_risky_homeowners = aggregate_housing_demand_for_safe_housing_risky_homeowners
+                            + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }else if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.32 | action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.4){
+                    aggregate_rental_demand_risky_homeowners = aggregate_rental_demand_risky_homeowners + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.4){
+                    aggregate_defaulters_risky_homeowners = aggregate_defaulters_risky_homeowners + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.5){
+                    aggregate_housing_supply_risky_homeoweners_terminal = aggregate_housing_supply_risky_homeoweners_terminal + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.1
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.2
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.31
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.32
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.4
+                        & action_risky[j][ia][ioltv][ifico][n][itheta][ie] != 1.5){
+                    attrition_risky = attrition_risky + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+                if (action_risky[j][ia][ioltv][ifico][n][itheta][ie] == 1.1){
+                    current_rate_risky = current_rate_risky + f_interim_risky_homeowner[j][ia][ioltv][ifico][n][itheta][ie];
+                }
+            }
+
+            for (int z = 0; z < Z_safe; z++){
+                List<Integer> node = state_space_safe.get(z);
+                int ia = node.get(0);
+                int ioltv = node.get(1);
+                int ifico = node.get(2);
+                int n = node.get(3);
+                int ie = node.get(4);
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.1 | action_safe[j][ia][ioltv][ifico][n][ie] == 3.2){
+                    aggregate_housing_demand_for_safe_housing_safe_homeowners = aggregate_housing_demand_for_safe_housing_safe_homeowners
+                            + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }else if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.31){
+                    aggregate_housing_demand_for_risky_housing_safe_homeowners = aggregate_housing_demand_for_risky_housing_safe_homeowners
+                            + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }else if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.32 | action_safe[j][ia][ioltv][ifico][n][ie] == 3.4){
+                    aggregate_rental_demand_safe_homeowners = aggregate_rental_demand_safe_homeowners + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.4){
+                    aggregate_defaulters_safe_homeowners = aggregate_defaulters_safe_homeowners + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] == 3.5){
+                    aggregate_housing_supply_safe_homeoweners_terminal = aggregate_housing_supply_safe_homeoweners_terminal + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+                if (action_safe[j][ia][ioltv][ifico][n][ie] != 3.1
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.2
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.31
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.32
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.4
+                        & action_safe[j][ia][ioltv][ifico][n][ie] != 3.5){
+                    attrition_safe  = attrition_safe + f_interim_safe_homeowner[j][ia][ioltv][ifico][n][ie];
+                }
+            }
+
+
+        }
+
+        // calculations for market clearing
+        double aggregate_risky_housing_demand = aggregate_housing_demand_for_risky_housing_newborns + aggregate_housing_demand_for_risky_housing_renters + aggregate_housing_demand_for_risky_housing_safe_homeowners;
+        double aggregate_risky_housing_supply = aggregate_rental_demand_risky_homeowners + aggregate_housing_demand_for_safe_housing_risky_homeowners + aggregate_housing_supply_risky_homeoweners_terminal;
+        double excess_risky_housing_demand = (aggregate_risky_housing_demand - aggregate_risky_housing_supply);
+        System.out.println("Demand for risky housing: " + aggregate_risky_housing_demand);
+        System.out.println("Supply for risky housing: " + aggregate_risky_housing_supply);
+        System.out.println("Excess demand for risky housing: " + excess_risky_housing_demand);
+        if (excess_risky_housing_demand > 0.001){System.out.println("market for risky housing may not have cleared!");}
+        System.out.println("====================================");
+
+        // calculate homeownership ratio (risky and safe)
+        double homeownership_rate_risky = aggregate_housing_demand_for_risky_housing_newborns + aggregate_housing_demand_for_risky_housing_renters
+                + aggregate_housing_demand_for_risky_housing_risky_homeowners + aggregate_housing_demand_for_risky_housing_safe_homeowners;
+        double homeownership_rate_safe = aggregate_housing_demand_for_safe_housing_newborns + aggregate_housing_demand_for_safe_housing_renters
+                + aggregate_housing_demand_for_safe_housing_risky_homeowners + aggregate_housing_demand_for_safe_housing_safe_homeowners;
+
+        System.out.println("Risky homeownership rate: " + homeownership_rate_risky);
+        System.out.println("Safe homeownership rate: " + homeownership_rate_safe);
+        System.out.println("Overall homeownership rate: " + (homeownership_rate_risky + homeownership_rate_safe));
+        System.out.println("Safe-to-risky homeownership ratio: " + (homeownership_rate_safe / homeownership_rate_risky));
+        System.out.println("====================================");
+
+        // calculate the price ratio (safe to risky)
+        double price_ratio = p_safe / p_risky;
+        System.out.println("Safe-to-risky price ratio: " + price_ratio);
+        System.out.println("====================================");
+
+        // calculate default rate in the economy
+        double risky_default_rate = aggregate_defaulters_risky_homeowners;
+        double safe_default_rate = aggregate_defaulters_safe_homeowners;
+        double default_rate = (risky_default_rate + safe_default_rate);
+        System.out.println("Risky default rate: " + risky_default_rate);
+        System.out.println("Safe default rate: " + safe_default_rate);
+        System.out.println("Overall default rate: " + default_rate);
+        System.out.println("====================================");
+
+        System.out.println("Current rate (risky / overall): " + current_rate_risky);
+        System.out.println("Current rate (risky / risky): " + (current_rate_risky / homeownership_rate_risky));
+        System.out.println("====================================");
+
+        System.out.println("Attrition risky: " + attrition_risky);
+        System.out.println("Attrition safe: " + attrition_safe);
+        System.out.println("Attrition renter: " + attrition_renter);
+        System.out.println("====================================");
+
         Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> output = new Quartet<>(f_interim_risky_homeowner, f_interim_safe_homeowner, f_interim_renter, f_newborn);
         return output;
 
@@ -1471,14 +2312,21 @@ public class DisasterAndIncomeRisk {
 
 
 
-
     public static void main(String[] args){
 
         long start_time = System.nanoTime();
 
+        double price_risky = 7.23;
+        double price_safe = 6.94;
+        double price_rent = 0.01;
+
         DisasterAndIncomeRisk model = new DisasterAndIncomeRisk();
-        Quartet<List<double[][][][][][][]>, List<double[][][][][][]>, List<double[][][][]>, List<double[][][][]>> household_policy_functions = model.solve_household_problems(7.23, 5.78, 0.28, 3);
-        Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> pre_disaster_distributions = model.compute_distributions_pre_disaster(household_policy_functions, 2);
+        Quartet<List<double[][][][][][][]>, List<double[][][][][][]>, List<double[][][][]>, List<double[][][][]>> household_policy_functions
+                = model.solve_household_problems(price_risky, price_safe, price_rent, 3);
+        Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> pre_disaster_distributions
+                = model.compute_distributions_pre_disaster(household_policy_functions, price_risky, price_safe, 2);
+        Quartet<double[][][][][][][], double[][][][][][], double[][][][], double[][][][]> post_disaster_distributions
+                = model.compute_distributions_post_disaster(household_policy_functions, price_risky, price_safe, 2);
 
         long end_time = System.nanoTime();
         System.out.println("run time = " + (end_time - start_time) * 1e-9 / 60 + " mins");

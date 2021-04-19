@@ -13,7 +13,14 @@ import java.util.stream.IntStream;
 import static java.lang.Math.*;
 import static java.lang.Math.max;
 
-public class ShocksOff {
+/**
+ * This iteration of model will contain two features:
+ * 1. idiosyncratic disaster risk
+ * 2. construction sector for risky housing: this will endogenize the supply and hence market clearing price for housing
+ */
+
+
+public class DisasterRiskConstructionSector {
 
     MiscFunctions miscFunctions = new MiscFunctions();
 
@@ -38,10 +45,13 @@ public class ShocksOff {
     double[] wage_grid = miscFunctions.read_vector("/home/ahyan/Dropbox/Underwater/DataWork/calibration/wage_grid.csv", 6);
 
     // housing related costs
-    double price_non_sfha;
     double maintenance_factor = 0.03;
     double closing_factor = 0.05;
     double moving_factor = 0.12;
+
+    // construction sector param(s)
+    double alpha_construction_sector = 0.6;
+    double l_bar = 0.00085;
 
 
     // asset params
@@ -117,6 +127,12 @@ public class ShocksOff {
         }
 
         return y;
+    }
+
+    // construction sector
+    double construction_sector(double p_sfha){
+        double construction_supply = pow(alpha_construction_sector * p_sfha, alpha_construction_sector / (1 - alpha_construction_sector)) * l_bar;
+        return construction_supply;
     }
 
     // various utility functions
@@ -1007,6 +1023,7 @@ public class ShocksOff {
         non_sfha_policy_functions.add(3, fico_non_sfha);
         non_sfha_policy_functions.add(4, n_non_sfha);
         non_sfha_policy_functions.add(5, action_non_sfha);
+        non_sfha_policy_functions.add(6, V_non_sfha);
 
         List<double[][][][][][]> sfha_policy_functions = new ArrayList<>();
         sfha_policy_functions.add(0, c_sfha);
@@ -1015,6 +1032,7 @@ public class ShocksOff {
         sfha_policy_functions.add(3, fico_sfha);
         sfha_policy_functions.add(4, n_sfha);
         sfha_policy_functions.add(5, action_sfha);
+        sfha_policy_functions.add(6, V_sfha);
 
         List<double[][][]> renter_policy_functions = new ArrayList<>();
         renter_policy_functions.add(0, c_renter);
@@ -1023,6 +1041,7 @@ public class ShocksOff {
         renter_policy_functions.add(3, fico_renter);
         renter_policy_functions.add(4, n_renter);
         renter_policy_functions.add(5, action_renter);
+        renter_policy_functions.add(6, V_renter);
 
         List<double[][][]> newborn_policy_functions = new ArrayList<>();
         newborn_policy_functions.add(0, c_newborn);
@@ -1031,6 +1050,7 @@ public class ShocksOff {
         newborn_policy_functions.add(3, fico_newborn);
         newborn_policy_functions.add(4, n_newborn);
         newborn_policy_functions.add(5, action_newborn);
+        newborn_policy_functions.add(6, V_newborn);
 
         Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> output =
                 new Quartet<>(sfha_policy_functions, non_sfha_policy_functions, renter_policy_functions, newborn_policy_functions);
@@ -1097,6 +1117,7 @@ public class ShocksOff {
         double[][][][][][] fico_sfha = sfha_homeowner_policy_functions.get(3);
         double[][][][][][] n_sfha = sfha_homeowner_policy_functions.get(4);
         double[][][][][][] action_sfha = sfha_homeowner_policy_functions.get(5);
+        double[][][][][][] V_sfha = sfha_homeowner_policy_functions.get(6);
 
         double[][][][][] c_non_sfha = non_sfha_homeowner_policy_functions.get(0);
         double[][][][][] a_non_sfha = non_sfha_homeowner_policy_functions.get(1);
@@ -1104,6 +1125,7 @@ public class ShocksOff {
         double[][][][][] fico_non_sfha = non_sfha_homeowner_policy_functions.get(3);
         double[][][][][] n_non_sfha = non_sfha_homeowner_policy_functions.get(4);
         double[][][][][] action_non_sfha = non_sfha_homeowner_policy_functions.get(5);
+        double[][][][][] V_non_sfha = non_sfha_homeowner_policy_functions.get(6);
 
         double[][][] c_renter = renter_policy_functions.get(0);
         double[][][] a_renter = renter_policy_functions.get(1);
@@ -1111,6 +1133,7 @@ public class ShocksOff {
         double[][][] fico_renter = renter_policy_functions.get(3);
         double[][][] n_renter = renter_policy_functions.get(4);
         double[][][] action_renter = renter_policy_functions.get(5);
+        double[][][] V_renter = renter_policy_functions.get(6);
 
         double[][][] c_newborn = newborn_policy_functions.get(0);
         double[][][] a_newborn = newborn_policy_functions.get(1);
@@ -1118,6 +1141,7 @@ public class ShocksOff {
         double[][][] fico_newborn = newborn_policy_functions.get(3);
         double[][][] n_newborn = newborn_policy_functions.get(4);
         double[][][] action_newborn = newborn_policy_functions.get(5);
+        double[][][] V_newborn = newborn_policy_functions.get(6);
 
         // tensors to hold the distros
         double[][][][][][] f_interim_sfha_homeowner = new double[J][na][noltv][nfico][N + 1][ntheta];
@@ -1372,7 +1396,7 @@ public class ShocksOff {
     // method returns the three moments of interest (homeownership rate, homeownership ratio, and default rate)
     double[] compute_market_clearing_and_moments(
             Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions,
-            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions, double price_sfha,
+            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions, double price_sfha, double price_non_sfha,
             String compute_moments, String verbose){
 
         // cohort weight
@@ -1430,6 +1454,7 @@ public class ShocksOff {
         double[][][][][][] fico_sfha = sfha_homeowner_policy_functions.get(3);
         double[][][][][][] n_sfha = sfha_homeowner_policy_functions.get(4);
         double[][][][][][] action_sfha = sfha_homeowner_policy_functions.get(5);
+        double[][][][][][] V_sfha = sfha_homeowner_policy_functions.get(6);
 
         double[][][][][] c_non_sfha = non_sfha_homeowner_policy_functions.get(0);
         double[][][][][] a_non_sfha = non_sfha_homeowner_policy_functions.get(1);
@@ -1437,6 +1462,7 @@ public class ShocksOff {
         double[][][][][] fico_non_sfha = non_sfha_homeowner_policy_functions.get(3);
         double[][][][][] n_non_sfha = non_sfha_homeowner_policy_functions.get(4);
         double[][][][][] action_non_sfha = non_sfha_homeowner_policy_functions.get(5);
+        double[][][][][] V_non_sfha = non_sfha_homeowner_policy_functions.get(6);
 
         double[][][] c_renter = renter_policy_functions.get(0);
         double[][][] a_renter = renter_policy_functions.get(1);
@@ -1444,6 +1470,7 @@ public class ShocksOff {
         double[][][] fico_renter = renter_policy_functions.get(3);
         double[][][] n_renter = renter_policy_functions.get(4);
         double[][][] action_renter = renter_policy_functions.get(5);
+        double[][][] V_renter = renter_policy_functions.get(6);
 
         double[][][] c_newborn = newborn_policy_functions.get(0);
         double[][][] a_newborn = newborn_policy_functions.get(1);
@@ -1451,6 +1478,7 @@ public class ShocksOff {
         double[][][] fico_newborn = newborn_policy_functions.get(3);
         double[][][] n_newborn = newborn_policy_functions.get(4);
         double[][][] action_newborn = newborn_policy_functions.get(5);
+        double[][][] V_newborn = newborn_policy_functions.get(6);
 
         // unpacking the quartet to get the distros
         double[][][][][][] f_interim_sfha_homeowner = distributions.getValue0();
@@ -1503,34 +1531,38 @@ public class ShocksOff {
                 int itheta = node.get(4);
                 if (action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.31 |
                         action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.32 |
-                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.4  |
-                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.5){
+                        action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.4
+                        //action_sfha[j][ia][ioltv][ifico][n][itheta] == 1.5
+                        ){
                     aggregate_housing_supply = aggregate_housing_supply + (1 * f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
                     if (f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta] >= 1){
                         System.out.println("Alert: pdf > 1 (homeonwer/supply)");
                     }
                 }
             }
-            if (verbose.equals("yes")){
-                System.out.println(j + " , " + aggregate_housing_demand_renters + " , " + aggregate_housing_supply);
-            }
+            //if (verbose.equals("yes")){
+            //    System.out.println(j + " , " + aggregate_housing_demand_renters + " , " + aggregate_housing_supply);
+            //}
 
         }
 
-        aggregate_housing_excess_demand = (aggregate_housing_demand_newborns + aggregate_housing_demand_renters - aggregate_housing_supply);
+        double construction_supply = construction_sector(price_sfha);
+        aggregate_housing_excess_demand = (aggregate_housing_demand_newborns + aggregate_housing_demand_renters - (aggregate_housing_supply + construction_supply));
 
         if (verbose.equals("yes")){
             System.out.println("==================================");
             System.out.println("housing demand (newborns): " + (aggregate_housing_demand_newborns));
             System.out.println("housing demand (renters): " + (aggregate_housing_demand_renters));
             System.out.println("housing supply (sfha homeowners): " + (aggregate_housing_supply));
+            System.out.println("housing supply (construction sector): " + construction_supply);
             System.out.println("aggregate housing excess demand: " + aggregate_housing_excess_demand);
+            if (abs(aggregate_housing_excess_demand) > 1e-5){
+                System.out.println("Housing market not cleared. Excess demand: " + aggregate_housing_excess_demand);
+            }
             System.out.println("==================================");
         }
 
-        if (aggregate_housing_excess_demand > 1e-5){
-            System.out.println("Housing market not cleared. Excess demand: " + aggregate_housing_excess_demand);
-        }
+
 
         double[] output = new double[4];
         if (compute_moments.equals("yes")){
@@ -1562,9 +1594,9 @@ public class ShocksOff {
                         sfha_homeowners = sfha_homeowners + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta];
                     }
                     consumption_by_age_sfha[j] = consumption_by_age_sfha[j] + (c_sfha[j][ia][ioltv][ifico][n][itheta] * f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
-                    if (j == 1 & f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta] > 0){
-                        System.out.println(action_sfha[j][ia][ioltv][ifico][n][itheta] + " , " + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
-                    }
+                    //if (j == 1 & f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta] > 0){
+                    //    System.out.println(action_sfha[j][ia][ioltv][ifico][n][itheta] + " , " + f_interim_sfha_homeowner[j][ia][ioltv][ifico][n][itheta]);
+                    //}
                 }
 
                 for (int z = 0; z < Z_non_sfha; z++){
@@ -1621,9 +1653,9 @@ public class ShocksOff {
 
     double[] calibration(double price_sfha, double[] empirical_moments, String verbose){
 
-        double[] price_ratio_grid = {0.8}; //0.80
-        double[] alpha_sfha_grid = {0.52};  //2.2, 1, 0.50
-        double[] alpha_non_sfha_grid = {0.2}; //1.9, 0.9
+        double[] price_ratio_grid = {0.9}; //0.80
+        double[] alpha_sfha_grid = {0.5};  //2.2, 1, 0.50, 0.42
+        double[] alpha_non_sfha_grid = {0.4}; //1.9, 0.9, 0.2
         double[] default_penalty_grid = {0}; //0.9, 0.05, 0.0707
         double[] transfer_grid = {0};
 
@@ -1644,14 +1676,14 @@ public class ShocksOff {
 
         for (int z = 0; z < Z_calibration; z++){
             List<Integer> node = state_space_calibration.get(z);
-            price_non_sfha = price_ratio_grid[node.get(0)] * price_sfha;
+            double price_non_sfha = price_ratio_grid[node.get(0)] * price_sfha;
             alpha_sfha = alpha_sfha_grid[node.get(1)];
             alpha_non_sfha = alpha_non_sfha_grid[node.get(2)];
             d = default_penalty_grid[node.get(3)];
             tau = transfer_grid[node.get(4)];
-            Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = solve_household_problems(price_sfha, price_non_sfha, verbose);
-            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions = compute_distributions(household_policy_functions, verbose);
-            model_moments = compute_market_clearing_and_moments(household_policy_functions, distributions, price_sfha,"yes", verbose);
+            Quartet<List<double[][][][][][]>, List<double[][][][][]>, List<double[][][]>, List<double[][][]>> household_policy_functions = solve_household_problems(price_sfha, price_non_sfha, "no");
+            Quartet<double[][][][][][], double[][][][][], double[][][], double[][][]> distributions = compute_distributions(household_policy_functions, "no");
+            model_moments = compute_market_clearing_and_moments(household_policy_functions, distributions, price_sfha,price_non_sfha, "yes", verbose);
 
             double sse = 0;
             for (int i = 0; i < model_moments.length; i++){
@@ -1674,6 +1706,11 @@ public class ShocksOff {
             System.out.println("foreclosure rate: : " + model_moments[3] + " / "  + empirical_moments[3]);
             System.out.println("result: [" + sse + " , " + alpha_sfha + " , " + alpha_non_sfha + " , " + (price_non_sfha / price_sfha) + " , " + d + "]");
             System.out.println("==================================");
+            System.out.println("\n");
+            System.out.println("\n");
+            System.out.println("\n");
+            System.out.println("\n");
+            System.out.println("\n");
         }
 
 
@@ -1682,20 +1719,15 @@ public class ShocksOff {
         return output;
     }
 
-    public static void main (String[] args){
 
-        long start_time = System.nanoTime();
+    public static void main(String[] args){
 
-        ShocksOff model = new ShocksOff();
+        DisasterRiskConstructionSector model = new DisasterRiskConstructionSector();
 
-
+        double price_sfha = 7.23;
         double[] empirical_moments = new MiscFunctions().read_vector("/home/ahyan/Dropbox/Underwater/DataWork/calibration/moments_of_interest.csv", 4);
-        System.out.println(Arrays.toString(model.calibration(7.23, empirical_moments, "yes")));
+        System.out.println(Arrays.toString(model.calibration(price_sfha, empirical_moments, "yes")));
 
-
-        long end_time = System.nanoTime();
-        System.out.println("run time = " + (end_time - start_time) * 1e-9 / 60 + " mins");
 
     }
-
 }
